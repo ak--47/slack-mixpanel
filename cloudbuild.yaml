@@ -1,0 +1,27 @@
+steps:
+  # Deploy to Cloud Run using source-based deployment
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--source=.'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=4Gi'
+      - '--cpu=2'
+      - '--timeout=3600'
+      - '--max-instances=10'
+      - '--min-instances=0'
+      - '--concurrency=1'
+      - '--port=8080'
+      - '--env-vars-file=.env.yaml'
+
+# Substitution variables
+substitutions:
+  _SERVICE_NAME: 'slack-mixpanel-analytics'
+  _REGION: 'us-central1'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
