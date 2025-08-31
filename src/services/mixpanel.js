@@ -40,6 +40,78 @@ class MixpanelUploader {
 	}
 
 	/**
+	 * Upload Node.js stream directly to Mixpanel using mixpanel-import
+	 * @param {Stream} nodeStream - Node.js readable stream (object mode)
+	 * @param {UploadOptions} options - Upload configuration
+	 * @param {Function} [errorHandler=null] - Optional error handler function
+	 * @param {Function} [responseMonitor=null] - Optional response monitoring function
+	 * @returns {Promise<UploadResult>} Upload result with metadata
+	 * @throws {Error} When token is missing or upload fails
+	 * @example
+	 * const nodeStream = highlandStream.toNodeStream({ objectMode: true });
+	 * const result = await uploader.upload(nodeStream, {
+	 *   type: 'event',
+	 *   token: 'your-token'
+	 * });
+	 */
+	async upload(nodeStream, options = {}, errorHandler = null, responseMonitor = null) {
+		const { type = 'event', groupKey = '', token, secret, ...uploadOptions } = options;
+
+		if (!token) {
+			throw new Error('Mixpanel token is required');
+		}
+
+		// Prepare credentials
+		const credentials = { token };
+		if (secret) credentials.secret = secret;
+
+		// Prepare mixpanel-import options
+		/** @type {import('mixpanel-import').Options} */
+		const mpOptions = {
+			...this.defaultOptions,
+			...uploadOptions,
+			recordType: type,
+			groupKey: groupKey || undefined,
+			showProgress: NODE_ENV !== "production"  // Show progress in all non-production environments
+		};
+
+		try {
+			// mixpanel-import handles Node.js streams directly
+			const result = await mpImport(credentials, nodeStream, mpOptions);
+
+			// Call response monitor if provided
+			if (responseMonitor) {
+				responseMonitor({
+					num_records_imported: result.success || 0,
+					num_good_events: result.success || 0
+				});
+			}
+
+			return {
+				meta: {
+					rows_total: (result.success || 0) + (result.failed || 0),
+					rows_imported: result.success || 0
+				}
+			};
+
+		} catch (error) {
+			// Handle errors using provided error handler
+			if (errorHandler) {
+				const handled = errorHandler(error);
+				if (handled && handled.num_records_imported) {
+					return {
+						meta: {
+							rows_total: handled.num_records_imported,
+							rows_imported: handled.num_records_imported
+						}
+					};
+				}
+			}
+			throw error;
+		}
+	}
+
+	/**
 	 * Upload array of objects directly to Mixpanel using mixpanel-import
 	 * @param {Array} data - Array of objects to upload
 	 * @param {UploadOptions} options - Upload configuration

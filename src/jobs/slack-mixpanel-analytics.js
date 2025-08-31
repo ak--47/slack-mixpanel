@@ -9,7 +9,7 @@ import utc from 'dayjs/plugin/utc.js';
 import * as akTools from "ak-tools";
 const { NODE_ENV = "unknown" } = process.env;
 // Tasks
-import { devTask, writeTask, uploadTask, arrayUploadTask } from "./tasks.js";
+import { devTask, writeTask, uploadTask } from "./tasks.js";
 
 // Models
 import slackMemberPipeline from "../models/slack-members.js";
@@ -120,7 +120,7 @@ async function main(params = {}) {
 	
 	switch (NODE_ENV) {
 		case "backfill":
-			work = (jobs) => arrayUploadTask(jobs, stats, env);  // Direct array upload for backfill
+			work = (jobs) => uploadTask(jobs, stats, env);  // Streaming upload for backfill
 			// work = (jobs) => writeTask(jobs, stats, env);      // Uncomment to write files instead
 			break;
 		case "test":
@@ -130,10 +130,10 @@ async function main(params = {}) {
 			work = (jobs) => devTask(jobs, stats, env);
 			break;
 		case "production":
-			work = (jobs) => arrayUploadTask(jobs, stats, env);  // Direct array upload for production
+			work = (jobs) => uploadTask(jobs, stats, env);  // Streaming upload for production
 			break;
 		default:
-			work = (jobs) => arrayUploadTask(jobs, stats, env);  // Direct array upload by default
+			work = (jobs) => uploadTask(jobs, stats, env);  // Streaming upload by default
 	}
 
 	// Define pipeline jobs

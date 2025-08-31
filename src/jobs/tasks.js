@@ -88,7 +88,7 @@ export async function devTask(jobs = [], stats, env = {}) {
 }
 
 /**
- * Upload task - production upload to Mixpanel
+ * Upload task - streaming upload to Mixpanel (end-to-end streaming)
  * @param {StreamJob[]} jobs - Jobs to process
  * @param {TaskStats} stats - Statistics object to update
  * @param {Object} env - Environment variables
@@ -103,10 +103,13 @@ export async function uploadTask(jobs = [], stats, env = {}) {
 		channel_group_key = 'channel_id' 
 	} = env;
 
+	console.log('🌊 STREAMING MODE: Direct Highland → Node stream → Mixpanel upload');
+
 	const UPLOAD_PIPELINE = jobs.map(job => {
 		const { stream = _([]), type = "event", groupKey = "", label = "" } = job;
 
 		return new Promise((resolve, _reject) => {
+			// Convert Highland stream to Node.js object mode stream for mixpanel-import
 			const nodeStream = stream
 				.tap(() => {
 					if (type === "user") stats.users.processed++;
@@ -115,13 +118,19 @@ export async function uploadTask(jobs = [], stats, env = {}) {
 				})
 				.toNodeStream({ objectMode: true });
 
+			// Use the stream upload method for true end-to-end streaming
 			mixpanel.upload(nodeStream, { 
 				type, 
 				groupKey: groupKey || (type === 'group' ? channel_group_key : ''), 
-				token: mixpanel_token, 				
-				secret: mixpanel_secret 
+				token: mixpanel_token, 
+				secret: mixpanel_secret,
+				// Streaming optimizations
+				workers: 100,
+				recordsPerBatch: 5000,
+				compress: true,
+				strict: false
 			}, null, (response) => {
-				// Track upload success
+				// Track upload success in real-time
 				if (response?.num_records_imported || response?.success) {
 					const imported = response.num_records_imported || response.success || 0;
 					if (type === "user") stats.users.uploaded += imported;
@@ -131,11 +140,11 @@ export async function uploadTask(jobs = [], stats, env = {}) {
 			})
 				.then(result => {
 					const { meta = {} } = result;
-					console.log(`UPLOAD ${label}: ${meta.rows_imported || 0} rows uploaded`);
+					console.log(`🌊 STREAM UPLOAD ${label}: ${meta.rows_imported || 0} rows uploaded`);
 					resolve({ label, meta });
 				})
 				.catch(err => {
-					console.error(`UPLOAD Error in ${label}:`, err);
+					console.error(`💥 STREAM Error in ${label}:`, err);
 					resolve({ label, error: err.message });
 				});
 		});
