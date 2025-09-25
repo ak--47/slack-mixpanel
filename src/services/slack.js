@@ -58,7 +58,7 @@ const { progress, sleep } = akTools;
  * @property {string} profile.display_name - Display name
  */
 
-const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = 2 } = process.env;
+const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = NODE_ENV === "backfill" ? 5 : 2 } = process.env;
 
 if (!slack_bot_token) throw new Error('No slack_bot_token in environment variables');
 if (!slack_user_token) throw new Error('No slack_user_token in environment variables');
@@ -170,8 +170,8 @@ async function analytics(startDate, endDate, type = 'member', streamResult = tru
 				console.log(`📊 SLACK PROGRESS: ${completed}/${daysToFetch.length} days completed (${Math.round(completed/daysToFetch.length*100)}%)`);
 			}
 			
-			// Rate limiting delay - respect Slack API limits
-			await sleep(2000); // Wait 2 seconds between requests to be safe
+			// Rate limiting delay - respect Slack API limits (reduced for faster backfills)
+			await sleep(500); // Wait 500ms between requests - analytics API is less restrictive
 			return Promise.resolve();
 			
 		} catch (error) {
@@ -248,21 +248,499 @@ async function getChannels() {
  */
 async function getUsers() {
 	if (cache.users) return cache.users;
-	
+
 	const users = [];
 	const options = { limit: 1000, include_locale: true };
 	const firstResponse = await slackUserClient.users.list(options);
 	users.push(...firstResponse.members);
-	
+
 	let { next_cursor = "" } = firstResponse.response_metadata;
 	while (next_cursor) {
 		const response = await slackUserClient.users.list({ ...options, cursor: next_cursor });
 		users.push(...response.members);
 		next_cursor = response.response_metadata.next_cursor;
 	}
-	
+
 	cache.users = users;
 	return users;
+}
+
+/**
+ * @typedef {Object} UserMessage
+ * @property {string} type - Message type
+ * @property {string} text - Message text content
+ * @property {string} ts - Message timestamp
+ * @property {string} user - User ID who sent the message
+ * @property {Object} channel - Channel information
+ * @property {string} channel.id - Channel ID
+ * @property {string} channel.name - Channel name
+ * @property {Array} reactions - Array of reactions to the message
+ * @property {number} reply_count - Number of replies to the message
+ * @property {boolean} is_starred - Whether message is starred
+ * @property {Object} permalink - Permanent link to the message
+ * @property {number} score - Search relevance score
+ */
+
+/**
+ * Get all messages for a specific user with optional filtering
+ * @param {string} userId - The Slack user ID to get messages for
+ * @param {Object} [options] - Optional filtering parameters
+ * @param {string} [options.startDate] - Start date in YYYY-MM-DD format (defaults to 3 days ago)
+ * @param {string} [options.endDate] - End date in YYYY-MM-DD format (defaults to today)
+ * @param {string} [options.oldest] - Oldest timestamp to filter from
+ * @param {string} [options.latest] - Latest timestamp to filter to
+ * @param {number} [options.limit] - Maximum number of messages to return (default: no limit)
+ * @param {boolean} [options.includeReactions=true] - Whether to include reaction data
+ * @param {boolean} [options.includeReplies=true] - Whether to include reply counts
+ * @returns {Promise<UserMessage[]>} Array of all messages from the user
+ * @throws {Error} When API calls fail
+ * @example
+ * // Get all messages from user in last 30 days
+ * const messages = await getUserMessages('U1234567890', {
+ *   startDate: '2024-01-01',
+ *   endDate: '2024-01-31'
+ * });
+ *
+ * // Get recent messages with analytics
+ * const recentMessages = await getUserMessages('U1234567890', {
+ *   limit: 100,
+ *   includeReactions: true,
+ *   includeReplies: true
+ * });
+ */
+async function getUserMessages(userId, options = {}) {
+	const {
+		startDate = dayjs.utc().subtract(3, 'days').format('YYYY-MM-DD'),
+		endDate = dayjs.utc().format('YYYY-MM-DD'),
+		oldest,
+		latest,
+		limit: maxMessages,
+		includeReactions = true,
+		includeReplies = true
+	} = options;
+
+	// Build search query for user messages
+	let query = `from:<@${userId}>`;
+
+	// Add date filters if provided
+	if (startDate) {
+		query += ` after:${startDate}`;
+	}
+	if (endDate) {
+		query += ` before:${endDate}`;
+	}
+
+	console.log(`🔍 SLACK: Searching messages for user ${userId} with query: ${query}`);
+
+	const allMessages = [];
+	let page = 1;
+	const searchLimit = 100; // Max per page for search API
+
+	try {
+		while (true) {
+			const searchOptions = {
+				query,
+				count: searchLimit,
+				page,
+				...(oldest && { oldest }),
+				...(latest && { latest })
+			};
+
+			const response = await limit(() => slackUserClient.search.messages(searchOptions));
+
+			if (!response.messages || !response.messages.matches) {
+				break;
+			}
+
+			const messages = response.messages.matches;
+
+			// Process each message to include analytics data
+			const processedMessages = await Promise.all(messages.map(async (message) => {
+				const processed = {
+					type: message.type,
+					text: message.text,
+					ts: message.ts,
+					user: message.user,
+					channel: message.channel,
+					permalink: message.permalink,
+					score: message.score
+				};
+
+				// Add reaction and reply data if requested
+				if (includeReactions || includeReplies) {
+					try {
+						// Get detailed message info to include reactions and thread info
+						const detailResponse = await slackUserClient.conversations.history({
+							channel: message.channel.id,
+							latest: message.ts,
+							oldest: message.ts,
+							inclusive: true,
+							limit: 1
+						});
+
+						if (detailResponse.messages && detailResponse.messages.length > 0) {
+							const detailedMessage = detailResponse.messages[0];
+
+							if (includeReactions) {
+								processed.reactions = detailedMessage.reactions || [];
+								processed.reaction_count = processed.reactions.reduce((sum, r) => sum + r.count, 0);
+							}
+
+							if (includeReplies) {
+								processed.reply_count = detailedMessage.reply_count || 0;
+								processed.reply_users_count = detailedMessage.reply_users_count || 0;
+								processed.latest_reply = detailedMessage.latest_reply;
+							}
+
+							// Additional analytics fields
+							processed.is_starred = detailedMessage.is_starred || false;
+							processed.pinned_to = detailedMessage.pinned_to || [];
+							processed.pinned_info = detailedMessage.pinned_info;
+						}
+
+					} catch (detailError) {
+						console.warn(`Could not get detailed info for message ${message.ts}:`, detailError.message);
+					}
+				}
+
+				return processed;
+			}));
+
+			allMessages.push(...processedMessages);
+
+			// Check if we've hit our limit
+			if (maxMessages && allMessages.length >= maxMessages) {
+				console.log(`📊 SLACK: Reached limit of ${maxMessages} messages`);
+				break;
+			}
+
+			// Check if there are more pages
+			if (!response.messages.pagination ||
+				page >= response.messages.pagination.page_count ||
+				messages.length < searchLimit) {
+				break;
+			}
+
+			page++;
+
+			// Rate limiting - search API has strict limits
+			await sleep(1000);
+		}
+
+	} catch (error) {
+		console.error('Error fetching user messages:', error);
+		throw error;
+	}
+
+	// Apply limit if specified and sort by timestamp
+	const finalMessages = allMessages
+		.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts)) // Sort by timestamp, newest first
+		.slice(0, maxMessages || allMessages.length);
+
+	console.log(`📊 SLACK: Found ${finalMessages.length} messages for user ${userId}`);
+	return finalMessages;
+}
+
+/**
+ * Get message analytics summary for a specific user
+ * @param {string} userId - The Slack user ID to analyze
+ * @param {Object} [options] - Optional filtering parameters (same as getUserMessages)
+ * @returns {Promise<Object>} Analytics summary object
+ * @example
+ * const analytics = await getUserMessageAnalytics('U1234567890', {
+ *   startDate: '2024-01-01',
+ *   endDate: '2024-01-31'
+ * });
+ * console.log(analytics.totalMessages, analytics.avgReactions);
+ */
+async function getUserMessageAnalytics(userId, options = {}) {
+	const messages = await getUserMessages(userId, {
+		...options,
+		includeReactions: true,
+		includeReplies: true
+	});
+
+	const analytics = {
+		totalMessages: messages.length,
+		totalReactions: 0,
+		totalReplies: 0,
+		avgReactions: 0,
+		avgReplies: 0,
+		mostReactedMessage: null,
+		mostRepliedMessage: null,
+		channelDistribution: {},
+		timeDistribution: {},
+		topReactionTypes: {}
+	};
+
+	if (messages.length === 0) return analytics;
+
+	// Calculate aggregated metrics
+	messages.forEach(message => {
+		// Reaction metrics
+		const reactionCount = message.reaction_count || 0;
+		analytics.totalReactions += reactionCount;
+
+		if (!analytics.mostReactedMessage || reactionCount > (analytics.mostReactedMessage.reaction_count || 0)) {
+			analytics.mostReactedMessage = message;
+		}
+
+		// Reply metrics
+		const replyCount = message.reply_count || 0;
+		analytics.totalReplies += replyCount;
+
+		if (!analytics.mostRepliedMessage || replyCount > (analytics.mostRepliedMessage.reply_count || 0)) {
+			analytics.mostRepliedMessage = message;
+		}
+
+		// Channel distribution
+		const channelName = message.channel?.name || 'unknown';
+		analytics.channelDistribution[channelName] = (analytics.channelDistribution[channelName] || 0) + 1;
+
+		// Time distribution (by hour of day)
+		const hour = new Date(parseFloat(message.ts) * 1000).getHours();
+		analytics.timeDistribution[hour] = (analytics.timeDistribution[hour] || 0) + 1;
+
+		// Top reaction types
+		if (message.reactions) {
+			message.reactions.forEach(reaction => {
+				analytics.topReactionTypes[reaction.name] = (analytics.topReactionTypes[reaction.name] || 0) + reaction.count;
+			});
+		}
+	});
+
+	// Calculate averages
+	analytics.avgReactions = Number((analytics.totalReactions / messages.length).toFixed(2));
+	analytics.avgReplies = Number((analytics.totalReplies / messages.length).toFixed(2));
+
+	return analytics;
+}
+
+/**
+ * @typedef {Object} ChannelMessage
+ * @property {string} type - Message type
+ * @property {string} text - Message text content
+ * @property {string} ts - Message timestamp
+ * @property {string} user - User ID who sent the message
+ * @property {string} channel_id - Channel ID
+ * @property {string} channel_name - Channel name
+ * @property {Array} reactions - Array of reactions to the message
+ * @property {number} reply_count - Number of replies to the message
+ * @property {boolean} is_starred - Whether message is starred
+ * @property {string} permalink - Permanent link to the message
+ */
+
+/**
+ * Get all messages for a specific channel with optional filtering
+ * @param {string} channelId - The Slack channel ID to get messages for
+ * @param {Object} [options] - Optional filtering parameters
+ * @param {string} [options.startDate] - Start date in YYYY-MM-DD format (defaults to 3 days ago)
+ * @param {string} [options.endDate] - End date in YYYY-MM-DD format (defaults to today)
+ * @param {string} [options.oldest] - Oldest timestamp to filter from
+ * @param {string} [options.latest] - Latest timestamp to filter to
+ * @param {number} [options.limit] - Maximum number of messages to return (default: no limit)
+ * @param {boolean} [options.includeReactions=true] - Whether to include reaction data
+ * @param {boolean} [options.includeReplies=true] - Whether to include reply counts
+ * @returns {Promise<ChannelMessage[]>} Array of all messages from the channel
+ * @throws {Error} When API calls fail
+ * @example
+ * // Get all messages from channel in last 3 days (default)
+ * const messages = await getChannelMessages('C1234567890');
+ *
+ * // Get messages with custom date range
+ * const recentMessages = await getChannelMessages('C1234567890', {
+ *   startDate: '2024-01-01',
+ *   endDate: '2024-01-31',
+ *   limit: 100
+ * });
+ */
+async function getChannelMessages(channelId, options = {}) {
+	const {
+		startDate = dayjs.utc().subtract(3, 'days').format('YYYY-MM-DD'),
+		endDate = dayjs.utc().format('YYYY-MM-DD'),
+		oldest,
+		latest,
+		limit: maxMessages,
+		includeReactions = true,
+		includeReplies = true
+	} = options;
+
+	console.log(`🔍 SLACK: Fetching messages for channel ${channelId} from ${startDate} to ${endDate}`);
+
+	const allMessages = [];
+	let cursor = null;
+	const apiLimit = 200; // Max per page for conversations.history
+
+	try {
+		// Convert dates to timestamps if provided
+		const oldestTs = oldest || dayjs.utc(startDate).unix();
+		const latestTs = latest || dayjs.utc(endDate).add(1, 'day').unix(); // Include full end date
+
+		while (true) {
+			const historyOptions = {
+				channel: channelId,
+				limit: apiLimit,
+				oldest: oldestTs.toString(),
+				latest: latestTs.toString(),
+				inclusive: true,
+				...(cursor && { cursor })
+			};
+
+			const response = await limit(() => slackUserClient.conversations.history(historyOptions));
+
+			if (!response.messages || response.messages.length === 0) {
+				break;
+			}
+
+			const messages = response.messages;
+
+			// Process each message to include analytics data
+			const processedMessages = await Promise.all(messages.map(async (message) => {
+				const processed = {
+					type: message.type,
+					text: message.text || '',
+					ts: message.ts,
+					user: message.user,
+					channel_id: channelId,
+					channel_name: '', // Will be filled if we have channel info cached
+					permalink: `https://${slackUserClient.team?.domain || 'workspace'}.slack.com/archives/${channelId}/p${message.ts.replace('.', '')}`
+				};
+
+				// Add reaction and reply data if requested
+				if (includeReactions) {
+					processed.reactions = message.reactions || [];
+					processed.reaction_count = processed.reactions.reduce((sum, r) => sum + r.count, 0);
+				}
+
+				if (includeReplies) {
+					processed.reply_count = message.reply_count || 0;
+					processed.reply_users_count = message.reply_users_count || 0;
+					processed.latest_reply = message.latest_reply;
+				}
+
+				// Additional analytics fields
+				processed.is_starred = message.is_starred || false;
+				processed.pinned_to = message.pinned_to || [];
+				processed.pinned_info = message.pinned_info;
+
+				return processed;
+			}));
+
+			allMessages.push(...processedMessages);
+
+			// Check if we've hit our limit
+			if (maxMessages && allMessages.length >= maxMessages) {
+				console.log(`📊 SLACK: Reached limit of ${maxMessages} messages`);
+				break;
+			}
+
+			// Check if there are more pages
+			if (!response.has_more || !response.response_metadata?.next_cursor) {
+				break;
+			}
+
+			cursor = response.response_metadata.next_cursor;
+
+			// Rate limiting between requests
+			await sleep(1000);
+		}
+
+	} catch (error) {
+		console.error('Error fetching channel messages:', error);
+		throw error;
+	}
+
+	// Apply limit if specified and sort by timestamp
+	const finalMessages = allMessages
+		.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts)) // Sort by timestamp, newest first
+		.slice(0, maxMessages || allMessages.length);
+
+	console.log(`📊 SLACK: Found ${finalMessages.length} messages for channel ${channelId}`);
+	return finalMessages;
+}
+
+/**
+ * Get message analytics summary for a specific channel
+ * @param {string} channelId - The Slack channel ID to analyze
+ * @param {Object} [options] - Optional filtering parameters (same as getChannelMessages)
+ * @returns {Promise<Object>} Analytics summary object
+ * @example
+ * const analytics = await getChannelMessageAnalytics('C1234567890', {
+ *   startDate: '2024-01-01',
+ *   endDate: '2024-01-31'
+ * });
+ * console.log(analytics.totalMessages, analytics.avgReactions);
+ */
+async function getChannelMessageAnalytics(channelId, options = {}) {
+	const messages = await getChannelMessages(channelId, {
+		...options,
+		includeReactions: true,
+		includeReplies: true
+	});
+
+	const analytics = {
+		totalMessages: messages.length,
+		totalReactions: 0,
+		totalReplies: 0,
+		avgReactions: 0,
+		avgReplies: 0,
+		mostReactedMessage: null,
+		mostRepliedMessage: null,
+		userDistribution: {},
+		timeDistribution: {},
+		topReactionTypes: {},
+		activeUsers: 0
+	};
+
+	if (messages.length === 0) return analytics;
+
+	const uniqueUsers = new Set();
+
+	// Calculate aggregated metrics
+	messages.forEach(message => {
+		// User tracking
+		if (message.user) {
+			uniqueUsers.add(message.user);
+		}
+
+		// Reaction metrics
+		const reactionCount = message.reaction_count || 0;
+		analytics.totalReactions += reactionCount;
+
+		if (!analytics.mostReactedMessage || reactionCount > (analytics.mostReactedMessage.reaction_count || 0)) {
+			analytics.mostReactedMessage = message;
+		}
+
+		// Reply metrics
+		const replyCount = message.reply_count || 0;
+		analytics.totalReplies += replyCount;
+
+		if (!analytics.mostRepliedMessage || replyCount > (analytics.mostRepliedMessage.reply_count || 0)) {
+			analytics.mostRepliedMessage = message;
+		}
+
+		// User distribution
+		const userId = message.user || 'unknown';
+		analytics.userDistribution[userId] = (analytics.userDistribution[userId] || 0) + 1;
+
+		// Time distribution (by hour of day)
+		const hour = new Date(parseFloat(message.ts) * 1000).getHours();
+		analytics.timeDistribution[hour] = (analytics.timeDistribution[hour] || 0) + 1;
+
+		// Top reaction types
+		if (message.reactions) {
+			message.reactions.forEach(reaction => {
+				analytics.topReactionTypes[reaction.name] = (analytics.topReactionTypes[reaction.name] || 0) + reaction.count;
+			});
+		}
+	});
+
+	// Calculate averages and unique counts
+	analytics.avgReactions = Number((analytics.totalReactions / messages.length).toFixed(2));
+	analytics.avgReplies = Number((analytics.totalReplies / messages.length).toFixed(2));
+	analytics.activeUsers = uniqueUsers.size;
+
+	return analytics;
 }
 
 // Initialize on module load
@@ -280,6 +758,10 @@ const { ready, userAuth, botAuth } = await initializeSlack();
  * @property {Function} analytics - Analytics data fetcher
  * @property {Function} getChannels - Channels fetcher
  * @property {Function} getUsers - Users fetcher
+ * @property {Function} getUserMessages - User messages fetcher
+ * @property {Function} getUserMessageAnalytics - User message analytics calculator
+ * @property {Function} getChannelMessages - Channel messages fetcher
+ * @property {Function} getChannelMessageAnalytics - Channel message analytics calculator
  * @property {Function} testAuth - Auth tester
  */
 const slackService = {
@@ -293,6 +775,10 @@ const slackService = {
 	analytics,
 	getChannels,
 	getUsers,
+	getUserMessages,
+	getUserMessageAnalytics,
+	getChannelMessages,
+	getChannelMessageAnalytics,
 	testAuth
 };
 
@@ -342,8 +828,32 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 			});
 		}
 		
+		// Test user message functionality (commented out by default to avoid noise)
+		// Uncomment and replace USER_ID to test the new message functionality
+		/*
+		const TEST_USER_ID = 'U1234567890'; // Replace with actual user ID
+		console.log(`🔍 Testing user message functionality for ${TEST_USER_ID}`);
+
+		const userMessages = await getUserMessages(TEST_USER_ID, {
+			limit: 5,
+			includeReactions: true,
+			includeReplies: true
+		});
+
+		console.log(`📝 Found ${userMessages.length} recent messages`);
+
+		if (userMessages.length > 0) {
+			const analytics = await getUserMessageAnalytics(TEST_USER_ID, { limit: 10 });
+			console.log('📊 User message analytics:', {
+				totalMessages: analytics.totalMessages,
+				avgReactions: analytics.avgReactions,
+				avgReplies: analytics.avgReplies
+			});
+		}
+		*/
+
 		console.log('✅ Slack service test completed successfully!');
-		
+
 		// Debugger for dev inspection
 		if (NODE_ENV === 'dev') debugger;
 			

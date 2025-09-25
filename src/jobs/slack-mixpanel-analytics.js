@@ -9,7 +9,7 @@ import utc from 'dayjs/plugin/utc.js';
 import * as akTools from "ak-tools";
 const { NODE_ENV = "unknown" } = process.env;
 // Tasks
-import { devTask, writeTask, uploadTask } from "./tasks.js";
+import { devTask, writeTask, uploadTask, cloudTask } from "./tasks.js";
 
 // Models
 import slackMemberPipeline from "../models/slack-members.js";
@@ -20,7 +20,9 @@ dayjs.extend(utc);
 const { 
 	mixpanel_token, 
 	mixpanel_secret, 
-	channel_group_key = 'channel_id'
+	channel_group_key = 'channel_id',
+	gcs_project,
+	gcs_path
 } = process.env;
 
 const jobTimer = akTools.timer("SLACK_MIXPANEL_ANALYTICS");
@@ -88,6 +90,7 @@ async function main(params = {}) {
 	if (NODE_ENV === "production") DAYS = 2;
 	if (NODE_ENV === "backfill") DAYS = 365;
 	if (NODE_ENV === "test") DAYS = 5;
+	if (NODE_ENV === "cloud") DAYS = 14;
 	if (params.days) DAYS = params.days;
 
 	let start = NOW.subtract(DAYS, "d").format(sfdcDateTimeFmt);
@@ -116,12 +119,16 @@ async function main(params = {}) {
 
 	// Determine work function based on environment
 	let work;
-	const env = { mixpanel_token, mixpanel_secret, channel_group_key };
+	const env = { mixpanel_token, mixpanel_secret, channel_group_key, gcs_project, gcs_path, NODE_ENV };
 	
 	switch (NODE_ENV) {
 		case "backfill":
-			work = (jobs) => uploadTask(jobs, stats, env);  // Streaming upload for backfill
+			work = (jobs) => cloudTask(jobs, stats, env);
+			// work = (jobs) => uploadTask(jobs, stats, env);  // Streaming upload for backfill
 			// work = (jobs) => writeTask(jobs, stats, env);      // Uncomment to write files instead
+			break;
+		case "cloud":
+			work = (jobs) => cloudTask(jobs, stats, env);  // Upload to Google Cloud Storage
 			break;
 		case "test":
 			work = (jobs) => writeTask(jobs, stats, env);
@@ -152,6 +159,20 @@ async function main(params = {}) {
 	let success = [];
 	let failed = [];
 	
+	// Add real-time stats logging for non-production environments
+	let statsInterval;
+	if (NODE_ENV !== 'production') {
+		console.log('📊 Starting pipeline with real-time stats updates...');
+		statsInterval = setInterval(() => {
+			const currentStats = stats.report();
+			console.log('📈 Pipeline Progress:', {
+				events: `${currentStats.events.processed} processed, ${currentStats.events.uploaded} uploaded`,
+				users: `${currentStats.users.processed} processed, ${currentStats.users.uploaded} uploaded`,
+				groups: `${currentStats.groups.processed} processed, ${currentStats.groups.uploaded} uploaded`
+			});
+		}, 5000); // Log every 5 seconds
+	}
+	
 	try {
 		const results = await Promise.allSettled(PIPELINE);
 		
@@ -172,6 +193,14 @@ async function main(params = {}) {
 	} catch (error) {
 		console.error(`SLACK-MIXPANEL ${NODE_ENV}: PIPELINE ERROR`, error);
 		if (NODE_ENV === "dev") throw error;
+	} finally {
+		// Clear the stats interval
+		if (statsInterval) {
+			clearInterval(statsInterval);
+			if (NODE_ENV !== 'production') {
+				console.log('📊 Final Stats:', stats.report());
+			}
+		}
 	}
 
 	jobTimer.stop();
@@ -194,7 +223,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	console.log(`🔧 Running Slack-Mixpanel Analytics job directly... in ${NODE_ENV} mode`);
 	
 	const opts = {};
-	if (NODE_ENV === "dev") opts.days = 2
+	if (NODE_ENV === "dev") opts.days = 3
 	
 	try {
 		const result = await main(opts);

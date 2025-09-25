@@ -5,24 +5,37 @@ import utc from 'dayjs/plugin/utc.js';
 import _ from 'highland';
 
 dayjs.extend(utc);
-const { md5, clone } = akTools;
+const { md5 } = akTools;
 const { NODE_ENV = "unknown", slack_prefix = `https://mixpanel.slack.com/archives` } = process.env;
 
 async function slackChannelPipeline(startDate, endDate) {
-	const slackChannelStream = await slack.analytics(startDate, endDate, "public_channel");
+	// Get channels lookup table once
 	const slackChannels = await slack.getChannels();
+	
+	// SINGLE API call - convert to array to ensure proper termination
+	const slackChannelStream = await slack.analytics(startDate, endDate, "public_channel");
+	
+	// Convert to array first to avoid hanging fork() streams
+	const channelData = await new Promise((resolve, reject) => {
+		slackChannelStream.toArray((results) => {
+			resolve(results);
+		});
+	});
+	
+	// Create independent Highland streams from array data
+	const slackChannelEventsStream = _(channelData.slice());
+	const slackChannelProfilesStream = _(channelData.slice());
 
-	const slackChannelStreamEv = slackChannelStream.fork();
-	const slackChannelStreamProf = slackChannelStream.fork();
-
-	const slackChannelEvents = slackChannelStreamEv
-		.map((record) => clone(record))
-		.map((channel) => {
-			channel.event = 'daily channel summary';
-			channel.insert_id = md5(`${channel.channel_id}-${channel.date}`);
-			channel.time = dayjs.utc(channel.date).add(4, 'h').add(20, 'm').unix();
-			channel.distinct_id = channel.channel_id;
-			return channel;
+	const slackChannelEvents = slackChannelEventsStream
+		.map((record) => {
+			// No clone needed - each stream gets independent data
+			return {
+				...record,
+				event: 'daily channel summary',
+				insert_id: md5(`${record.channel_id}-${record.date}`),
+				time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
+				distinct_id: record.channel_id
+			};
 		})
 		.uniqBy((a, b) => {
 			return a.insert_id === b.insert_id;
@@ -31,32 +44,31 @@ async function slackChannelPipeline(startDate, endDate) {
 			if (NODE_ENV === 'dev') console.error('SLACK CHANNELS: error in analytics pipeline', err);
 		});
 
-	const slackChannelProfiles = slackChannelStreamProf
-		.map((record) => clone(record))
-		.map((channel) => {
-			const channelDetails = slackChannels.find((c) => c.id === channel.channel_id);
+	const slackChannelProfiles = slackChannelProfilesStream
+		.map((record) => {
+			const channelDetails = slackChannels.find((c) => c.id === record.channel_id);
 			
-			channel.distinct_id = channel.channel_id;
-			channel.date = dayjs.utc(channel.date).add(4, 'h').add(20, 'm').unix();
+			const profile = {
+				...record,
+				distinct_id: record.channel_id,
+				date: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix()
+			};
 			
 			if (channelDetails) {
-				channel.name = `#${channelDetails.name}`;
-				if (channelDetails?.purpose?.value) channel.purpose = channelDetails.purpose.value;
-				if (channelDetails?.topic?.value) channel.topic = channelDetails.topic.value;
-				channel['#  → SLACK'] = `${slack_prefix}/${channel.channel_id}`;
-				channel["email"] = `${slack_prefix}/${channel.channel_id}`;
-				// channel.external = false;
-				// channel.private = false;
-				channel.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
+				profile.name = `#${channelDetails.name}`;
+				if (channelDetails?.purpose?.value) profile.purpose = channelDetails.purpose.value;
+				if (channelDetails?.topic?.value) profile.topic = channelDetails.topic.value;
+				profile['#  → SLACK'] = `${slack_prefix}/${profile.channel_id}`;
+				profile["email"] = `${slack_prefix}/${profile.channel_id}`;
+				profile.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
 
-				if (channelDetails.is_ext_shared) channel.external = true;
-				if (channelDetails.is_shared) channel.external = true;
-				if (channelDetails.is_private) channel.private = true;
-				if (channelDetails.num_members) channel.members = channelDetails.num_members;
-				
+				if (channelDetails.is_ext_shared) profile.external = true;
+				if (channelDetails.is_shared) profile.external = true;
+				if (channelDetails.is_private) profile.private = true;
+				if (channelDetails.num_members) profile.members = channelDetails.num_members;
 			}
 			
-			return channel;
+			return profile;
 		})
 		.uniqBy((a, b) => {
 			return a.distinct_id === b.distinct_id;

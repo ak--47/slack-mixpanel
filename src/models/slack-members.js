@@ -5,35 +5,47 @@ import utc from 'dayjs/plugin/utc.js';
 import _ from 'highland';
 
 dayjs.extend(utc);
-const { md5, clone } = akTools;
+const { md5 } = akTools;
 const { NODE_ENV = "unknown", company_domain = "mixpanel.com", slack_prefix } = process.env;
 
 async function slackMemberPipeline(startDate, endDate) {
-	const slackMemberStream = await slack.analytics(startDate, endDate, "member");
-	slackMemberStream.pause();
-	
+	// Get users lookup table once
 	const slackMembers = await slack.getUsers();
-	const slackMemberStreamEv = slackMemberStream.fork();
-	const slackMemberStreamProf = slackMemberStream.fork();
 	
-	const slackMemberEvents = slackMemberStreamEv
-		.map((record) => clone(record))
+	// SINGLE API call - convert to array to ensure proper termination
+	const slackMemberStream = await slack.analytics(startDate, endDate, "member");
+	
+	// Convert to array first to avoid hanging fork() streams
+	const memberData = await new Promise((resolve, reject) => {
+		slackMemberStream.toArray((results) => {
+			resolve(results);
+		});
+	});
+	
+	// Create independent Highland streams from array data
+	const slackMemberEventsStream = _(memberData.slice());
+	const slackMemberProfilesStream = _(memberData.slice());
+	
+	const slackMemberEvents = slackMemberEventsStream
 		.filter((user) => user.email_address && user.email_address.endsWith(`@${company_domain}`))
 		.map((record) => {
-			record.slack_user_id = record.user_id;
-			delete record.user_id;
-			record.distinct_id = record.email_address.toLowerCase();
-			record.event = 'daily user summary';
-			record.insert_id = md5(`${record.email_address}-${record.date}-${record.slack_user_id}`);
-			record.time = dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix();
-			return record;
+			// No clone needed - each stream gets independent data
+			const eventRecord = {
+				...record,
+				slack_user_id: record.user_id,
+				distinct_id: record.email_address.toLowerCase(),
+				event: 'daily user summary',
+				insert_id: md5(`${record.email_address}-${record.date}-${record.user_id}`),
+				time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix()
+			};
+			delete eventRecord.user_id;
+			return eventRecord;
 		})
 		.errors(err => {
 			if (NODE_ENV === 'dev') console.error('SLACK MEMBERS: error in analytics pipeline', err);
 		});
 
-	const slackMemberProfiles = slackMemberStreamProf
-		.map((record) => clone(record))
+	const slackMemberProfiles = slackMemberProfilesStream
 		.filter((user) => user.email_address && user.email_address.endsWith(`@${company_domain}`))
 		.map((record) => {
 			const memberDetails = slackMembers.find((m) => m.id === record.user_id);
@@ -51,7 +63,7 @@ async function slackMemberPipeline(startDate, endDate) {
 				profile.title = memberDetails.profile.title;
 				profile.name = memberDetails.real_name;
 				profile.display_name = memberDetails.profile.display_name;
-				profile.timezone = memberDetails.tz
+				profile.timezone = memberDetails.tz;
 			}
 			
 			return profile;

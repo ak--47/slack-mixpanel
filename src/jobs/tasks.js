@@ -7,6 +7,7 @@ import { createWriteStream } from "fs";
 import path from "path";
 import _ from "highland";
 import mixpanel from "../services/mixpanel.js";
+import { Storage } from '@google-cloud/storage';
 
 /**
  * @typedef {Object} StreamJob
@@ -311,6 +312,119 @@ export async function writeTask(jobs = [], stats, env = {}) {
 	});
 
 	return Promise.allSettled(writeOperations);
+}
+
+/**
+ * Cloud task - upload data to Google Cloud Storage
+ * @param {StreamJob[]} jobs - Jobs to process
+ * @param {TaskStats} stats - Statistics object to update
+ * @param {Object} env - Environment variables with gcs_project and gcs_path
+ * @returns {Promise<Array>} Results of all jobs
+ */
+export async function cloudTask(jobs = [], stats, env = {}) {
+	if (!Array.isArray(jobs)) jobs = [jobs];
+	
+	const { 
+		gcs_project, 
+		gcs_path, // Format: gs://bucket/path/
+		NODE_ENV = "unknown"
+	} = env;
+
+	if (!gcs_project || !gcs_path) {
+		throw new Error('gcs_project and gcs_path environment variables required for cloud task');
+	}
+
+	// Parse GCS path: gs://bucket/path/
+	const gcsMatch = gcs_path.match(/^gs:\/\/([^\/]+)\/(.*)$/);
+	if (!gcsMatch) {
+		throw new Error('gcs_path must be in format gs://bucket/path/');
+	}
+	
+	const [, bucketName, basePath] = gcsMatch;
+	
+	console.log(`☁️  CLOUD MODE: Uploading to ${bucketName}/${basePath}`);
+
+	// Initialize Google Cloud Storage
+	const storage = new Storage({ projectId: gcs_project });
+	const bucket = storage.bucket(bucketName);
+
+	const uploadOperations = jobs.map(job => {
+		const { stream = _([]), type = "event", label = "" } = job;
+		if (!label) throw new Error("label required for cloud task");
+		
+		// Generate filename with timestamp
+		const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+		const filename = `${basePath}${label}-${timestamp}.ndjson`;
+		
+		return new Promise((resolve, _reject) => {
+			let count = 0;
+			let progressInterval = null;
+			
+			// Show progress for non-production environments
+			if (NODE_ENV !== "production") {
+				console.log(`☁️  Starting cloud upload for ${label}...`);
+				progressInterval = setInterval(() => {
+					if (count > 0) {
+						console.log(`☁️  ${label}: ${count} records uploaded so far...`);
+					}
+				}, 5000); // Update every 5 seconds
+			}
+
+			// Create GCS write stream
+			const file = bucket.file(filename);
+			const gcsStream = file.createWriteStream({
+				metadata: {
+					contentType: 'application/json',
+					cacheControl: 'public, max-age=31536000', // 1 year
+				},
+				resumable: false, // For smaller files, non-resumable is faster
+			});
+
+			// Convert Highland stream to array first to ensure proper termination
+			stream
+				.map(data => {
+					count++;
+					if (type === "user") stats.users.processed++;
+					else if (type === "group") stats.groups.processed++;
+					else if (type === "event") stats.events.processed++;
+					return data;
+				})
+				.errors(err => {
+					console.error(`☁️  Cloud Error in ${label}:`, err);
+					if (progressInterval) clearInterval(progressInterval);
+					resolve({ label, error: err.message });
+				})
+				.toArray(data => {
+					// Clear progress interval
+					if (progressInterval) clearInterval(progressInterval);
+					
+					console.log(`🔍 CLOUD FINISH ${label}: type=${type}, count=${count}`);
+					
+					// Write all data to GCS
+					const ndjsonData = data.map(item => JSON.stringify(item)).join('\n') + '\n';
+					
+					gcsStream.write(ndjsonData);
+					gcsStream.end();
+					
+					gcsStream.on('finish', () => {
+						// For cloud task, processed = uploaded since we wrote them all
+						if (type === "user") stats.users.uploaded += count;
+						else if (type === "group") stats.groups.uploaded += count;
+						else if (type === "event") stats.events.uploaded += count;
+						
+						console.log(`✅ CLOUD ${label}: ${count} rows uploaded to gs://${bucketName}/${filename}`);
+						resolve({ label, gcsPath: `gs://${bucketName}/${filename}`, type, rowCount: count });
+					});
+					
+					gcsStream.on('error', (err) => {
+						console.error(`❌ CLOUD GCS Error in ${label}:`, err);
+						resolve({ label, error: err.message });
+					});
+				});
+		});
+	});
+
+	return Promise.allSettled(uploadOperations);
 }
 
 // Direct execution capability for testing tasks

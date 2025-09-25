@@ -53,30 +53,66 @@ slack_prefix=https://yourworkspace.slack.com/archives
 company_domain=yourcompany.com  # Email domain filter
 channel_group_key=channel_id    # Mixpanel group key for channels
 channel_datagroup_id=...        # Mixpanel group ID for channels
+
+# Cloud Storage (for NODE_ENV=cloud)
+gcs_project=your-gcs-project    # Google Cloud project ID
+gcs_path=gs://bucket/path/      # GCS bucket and path
 ```
 
 ## 📊 API Usage
 
 ### HTTP Endpoints
 
-**Main pipeline:**
+**Health Check:**
 ```bash
-# Query parameters (case-insensitive)
-POST /slack-analytics?days=7
-POST /slack-analytics?start_date=2024-01-01&end_date=2024-01-31
+GET /         # Service status and endpoint list
+GET /health   # Health check
+```
 
-# JSON body
-POST /slack-analytics
+**Pipeline Endpoints:**
+```bash
+# Process Slack members only
+POST /members?days=7
+POST /members?start_date=2024-01-01&end_date=2024-01-31
+POST /members?backfill=true
+
+# Process Slack channels only  
+POST /channels?days=7
+POST /channels?start_date=2024-01-01&end_date=2024-01-31
+POST /channels?backfill=true
+
+# Process both members and channels
+POST /all?days=7
+POST /all?start_date=2024-01-01&end_date=2024-01-31
+POST /all?backfill=true
+```
+
+**JSON Body Examples:**
+```bash
+# Using JSON body instead of query params
+POST /members
 Content-Type: application/json
 {"days": 7}
 
-# Health check
-GET /
+POST /channels  
+Content-Type: application/json
+{"start_date": "2024-01-01", "end_date": "2024-01-31"}
+
+POST /all
+Content-Type: application/json
+{"backfill": true}
 ```
 
 **Parameters:**
-- `days` - Number of days to process (mutually exclusive with date range)
-- `start_date` / `end_date` - Custom date range in YYYY-MM-DD format
+- `days` - Number of days to process (mutually exclusive with date range and backfill)
+- `start_date` / `end_date` - Custom date range in YYYY-MM-DD format (mutually exclusive with days and backfill)
+- `backfill=true` - Process 13 months of historical data (mutually exclusive with days and date range)
+
+**Parameter Rules:**
+- Query parameters take precedence over JSON body
+- Parameters are case-insensitive in query strings
+- Only one parameter type allowed: `days` OR `start_date/end_date` OR `backfill`
+- `backfill=true` automatically sets processing mode to backfill environment (13+ months of data)
 
 ### Direct Execution
 ```bash
@@ -100,6 +136,7 @@ node src/models/slack-members.js
 - `dev` - Write to local files (`tmp/` directory)
 - `production` - Upload directly to Mixpanel
 - `backfill` - Process historical data
+- `cloud` - Upload to Google Cloud Storage
 - `test` - Write mode for testing
 
 ## 🧪 Development
@@ -114,10 +151,31 @@ node src/models/slack-members.js
 ```bash
 npm run dev          # Development mode (local files)
 npm start            # Production mode (Mixpanel upload)
-npm test             # Run pipeline tests
 npm run deploy       # Deploy to Cloud Run
 npm run prune        # Clean temp files
 ```
+
+### Testing
+```bash
+npm test             # Run all tests
+npm run test:unit    # Run unit tests only
+npm run test:integration  # Run integration tests only
+npm run test:watch   # Run tests in watch mode
+npm run test:coverage     # Run tests with coverage report
+npm run test:ui      # Open Vitest UI
+npm run test:legacy  # Run legacy test.js script
+```
+
+**Test Structure:**
+- **Unit Tests** (`test/unit/`) - Test helper functions, parameter validation, and data processing logic
+- **Integration Tests** (`test/integration/`) - Test API endpoints and full pipeline execution with real Slack credentials
+- **Coverage Reports** - Generated in `coverage/` directory
+
+**Integration Test Requirements:**
+- Requires valid Slack credentials in `.env` file
+- Tests are automatically skipped if credentials are missing
+- Uses small date ranges (1-2 days) to avoid rate limits
+- Tests against real Slack API in test mode (writes to files, not Mixpanel)
 
 ## 🔒 Authentication
 

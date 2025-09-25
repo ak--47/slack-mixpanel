@@ -10,10 +10,17 @@
     "build": "echo 'No build step required'",
     "deploy": "./deploy.sh",
     "lint": "echo 'Linting not configured'",
-    "test": "node test.js",
+    "test": "vitest",
+    "test:unit": "vitest test/unit",
+    "test:integration": "vitest test/integration",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "test:legacy": "node test.js",
     "prune": "rm -rf tmp/* || true"
   },
   "dependencies": {
+    "@google-cloud/bigquery": "^8.1.1",
     "@google-cloud/storage": "^7.7.0",
     "@slack/web-api": "^6.12.0",
     "ak-tools": "^1.0.0",
@@ -21,12 +28,19 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "highland": "^2.13.5",
-    "mixpanel-import": "^2.8.162",
+    "mixpanel-import": "^3.0.16",
     "p-limit": "^4.0.0"
   },
   "engines": {
     "node": ">=18"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.1.4",
+    "vitest": "^3.2.4"
+  }
 }
