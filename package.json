@@ -29,7 +29,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "highland": "^2.13.5",
-    "mixpanel-import": "^3.0.16",
+    "mixpanel-import": "^3.1.41",
     "p-limit": "^4.0.0"
   },
   "engines": {
