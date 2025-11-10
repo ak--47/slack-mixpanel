@@ -58,7 +58,7 @@ const { progress, sleep } = akTools;
  * @property {string} profile.display_name - Display name
  */
 
-const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = NODE_ENV === "backfill" ? 5 : 2 } = process.env;
+const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = 1 } = process.env;
 
 if (!slack_bot_token) throw new Error('No slack_bot_token in environment variables');
 if (!slack_user_token) throw new Error('No slack_user_token in environment variables');
@@ -169,9 +169,11 @@ async function analytics(startDate, endDate, type = 'member', streamResult = tru
 			if (NODE_ENV !== "production" && completed % 10 === 0) {
 				console.log(`📊 SLACK PROGRESS: ${completed}/${daysToFetch.length} days completed (${Math.round(completed/daysToFetch.length*100)}%)`);
 			}
-			
-			// Rate limiting delay - respect Slack API limits (reduced for faster backfills)
-			await sleep(500); // Wait 500ms between requests - analytics API is less restrictive
+
+			// Conservative rate limiting with randomized jitter to avoid 429s
+			const baseDelay = 1500;
+			const jitter = Math.floor(Math.random() * 1500); // 0-1500ms random jitter
+			await sleep(baseDelay + jitter); // 1500-3000ms between requests
 			return Promise.resolve();
 			
 		} catch (error) {

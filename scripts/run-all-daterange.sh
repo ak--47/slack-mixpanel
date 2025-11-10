@@ -13,11 +13,10 @@ fi
 START_DATE=$1
 END_DATE=$2
 PORT=${PORT:-8080}
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="$SCRIPT_DIR/logs/all-daterange-${START_DATE}_${END_DATE}-$(date +%Y%m%d-%H%M%S).log"
+LOG_FILE="logs/all-daterange-${START_DATE}_${END_DATE}-$(date +%Y%m%d-%H%M%S).log"
 
 echo "Starting server on port $PORT..."
-mkdir -p "$SCRIPT_DIR/logs"
+mkdir -p logs
 
 # Start server in background
 npm start > "$LOG_FILE" 2>&1 &
@@ -46,11 +45,11 @@ for i in {1..30}; do
 done
 
 # Make the request
-echo "Running pipeline: POST /all?start_date=$START_DATE&end_date=$END_DATE"
+echo "Running pipeline: POST /mixpanel-all?start_date=$START_DATE&end_date=$END_DATE"
 echo "Output logging to: $LOG_FILE"
 echo ""
 
-curl -X POST "http://localhost:$PORT/all?start_date=$START_DATE&end_date=$END_DATE" \
+curl -X POST "http://localhost:$PORT/mixpanel-all?start_date=$START_DATE&end_date=$END_DATE" \
     -H "Content-Type: application/json" \
     -w "\n\nHTTP Status: %{http_code}\nTotal Time: %{time_total}s\n" \
     2>&1 | tee -a "$LOG_FILE"

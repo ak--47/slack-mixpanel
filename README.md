@@ -72,33 +72,33 @@ GET /health   # Health check
 **Pipeline Endpoints:**
 ```bash
 # Process Slack members only
-POST /members?days=7
-POST /members?start_date=2024-01-01&end_date=2024-01-31
-POST /members?backfill=true
+POST /mixpanel-members?days=7
+POST /mixpanel-members?start_date=2024-01-01&end_date=2024-01-31
+POST /mixpanel-members?backfill=true
 
-# Process Slack channels only  
-POST /channels?days=7
-POST /channels?start_date=2024-01-01&end_date=2024-01-31
-POST /channels?backfill=true
+# Process Slack channels only
+POST /mixpanel-channels?days=7
+POST /mixpanel-channels?start_date=2024-01-01&end_date=2024-01-31
+POST /mixpanel-channels?backfill=true
 
 # Process both members and channels
-POST /all?days=7
-POST /all?start_date=2024-01-01&end_date=2024-01-31
-POST /all?backfill=true
+POST /mixpanel-all?days=7
+POST /mixpanel-all?start_date=2024-01-01&end_date=2024-01-31
+POST /mixpanel-all?backfill=true
 ```
 
 **JSON Body Examples:**
 ```bash
 # Using JSON body instead of query params
-POST /members
+POST /mixpanel-members
 Content-Type: application/json
 {"days": 7}
 
-POST /channels  
+POST /mixpanel-channels
 Content-Type: application/json
 {"start_date": "2024-01-01", "end_date": "2024-01-31"}
 
-POST /all
+POST /mixpanel-all
 Content-Type: application/json
 {"backfill": true}
 ```

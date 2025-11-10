@@ -5,11 +5,10 @@
 set -e
 
 PORT=${PORT:-8080}
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="$SCRIPT_DIR/logs/all-backfill-$(date +%Y%m%d-%H%M%S).log"
+LOG_FILE="logs/all-backfill-$(date +%Y%m%d-%H%M%S).log"
 
 echo "Starting server on port $PORT..."
-mkdir -p "$SCRIPT_DIR/logs"
+mkdir -p logs
 
 # Start server in background
 npm start > "$LOG_FILE" 2>&1 &
@@ -38,12 +37,12 @@ for i in {1..30}; do
 done
 
 # Make the request
-echo "Running pipeline: POST /all?backfill=true"
+echo "Running pipeline: POST /mixpanel-all?backfill=true"
 echo "⚠️  WARNING: This will process 13 months of historical data and may take a while"
 echo "Output logging to: $LOG_FILE"
 echo ""
 
-curl -X POST "http://localhost:$PORT/all?backfill=true" \
+curl -X POST "http://localhost:$PORT/mixpanel-all?backfill=true" \
     -H "Content-Type: application/json" \
     -w "\n\nHTTP Status: %{http_code}\nTotal Time: %{time_total}s\n" \
     2>&1 | tee -a "$LOG_FILE"
