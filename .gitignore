@@ -17,8 +17,10 @@ tmp/
 *.temp
 
 # Logs
+!logs/.gitkeep
 logs
 *.log
+
 
 # Runtime data
 pids
