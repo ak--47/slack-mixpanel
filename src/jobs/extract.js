@@ -7,8 +7,11 @@ import slackService from '../services/slack.js';
 import storage from '../services/storage.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
+import 'dotenv/config';
 
 dayjs.extend(utc);
+
+const { company_domain } = process.env;
 
 /**
  * Extract member analytics data for date range
@@ -44,11 +47,20 @@ export async function extractMemberAnalytics(startDate, endDate) {
 			const data = await slackService.analytics(date, date, 'member', false);
 
 			if (data && data.length > 0) {
-				// Write to file
-				const writtenPath = await storage.writeJSONLGz(filePath, data);
-				console.log(`✅ Extracted ${date}: ${data.length} records → ${filePath}`);
-				extracted++;
-				files.push(writtenPath);
+				// Filter to only company domain users
+				const filteredData = company_domain
+					? data.filter(record => record.email_address && record.email_address.endsWith(`@${company_domain}`))
+					: data;
+
+				if (filteredData.length > 0) {
+					// Write to file
+					const writtenPath = await storage.writeJSONLGz(filePath, filteredData);
+					console.log(`✅ Extracted ${date}: ${filteredData.length}/${data.length} records (filtered by @${company_domain}) → ${filePath}`);
+					extracted++;
+					files.push(writtenPath);
+				} else {
+					console.log(`⚠️  No company domain users for ${date}`);
+				}
 			} else {
 				console.log(`⚠️  No data for ${date}`);
 			}

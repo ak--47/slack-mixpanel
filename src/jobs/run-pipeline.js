@@ -7,6 +7,7 @@
 import dotenv from 'dotenv';
 import { extractMemberAnalytics, extractChannelAnalytics } from './extract.js';
 import { loadMemberAnalytics, loadChannelAnalytics } from './load.js';
+import slackService from '../services/slack.js';
 import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
@@ -141,6 +142,23 @@ export async function runPipeline(options = {}) {
 		console.log(`Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
 		console.log(`${'='.repeat(80)}\n`);
 
+		// Cache channels and members for transforms (only needed for load stage)
+		let slackMembers = [];
+		let slackChannels = [];
+
+		if (!extractOnly) {
+			console.log(`📦 Caching Slack workspace data...`);
+			if (pipelines.includes('members')) {
+				slackMembers = await slackService.getUsers();
+				console.log(`   ✓ Cached ${slackMembers.length} members`);
+			}
+			if (pipelines.includes('channels')) {
+				slackChannels = await slackService.getChannels();
+				console.log(`   ✓ Cached ${slackChannels.length} channels`);
+			}
+			console.log();
+		}
+
 		const extractResults = {};
 		const loadResults = {};
 
@@ -177,7 +195,7 @@ export async function runPipeline(options = {}) {
 					: extractResults.members?.files || [];
 
 				if (files.length > 0) {
-					loadResults.members = await loadMemberAnalytics(files);
+					loadResults.members = await loadMemberAnalytics(files, { slackMembers });
 				} else {
 					console.log(`⚠️  No member files to load`);
 				}
@@ -189,7 +207,7 @@ export async function runPipeline(options = {}) {
 					: extractResults.channels?.files || [];
 
 				if (files.length > 0) {
-					loadResults.channels = await loadChannelAnalytics(files);
+					loadResults.channels = await loadChannelAnalytics(files, { slackChannels });
 				} else {
 					console.log(`⚠️  No channel files to load`);
 				}

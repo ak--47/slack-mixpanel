@@ -1,14 +1,16 @@
 /**
- * @fileoverview Load stage - upload files to Mixpanel with retry logic
+ * @fileoverview Load stage - upload files to Mixpanel with retry logic and transforms
  * @module Load
  */
 
 import mixpanelImport from 'mixpanel-import';
 import storage from '../services/storage.js';
+import { transformMemberEvent, transformMemberProfile } from '../transforms/members.js';
+import { transformChannelEvent, transformChannelProfile } from '../transforms/channels.js';
 import path from 'path';
 import 'dotenv/config';
 
-const { mixpanel_token, mixpanel_secret } = process.env;
+const { mixpanel_token, mixpanel_secret, slack_prefix, channel_group_key = 'channel_id' } = process.env;
 
 /**
  * Extract relative path from full file path
@@ -17,8 +19,6 @@ const { mixpanel_token, mixpanel_secret } = process.env;
  */
 function getRelativePath(fullPath) {
 	if (storage.isGCS()) {
-		// For GCS: gs://bucket/prefix/members/2024-01-01-members.jsonl.gz
-		// Extract: members/2024-01-01-members.jsonl.gz
 		const gcsPath = storage.getStoragePath();
 		const match = fullPath.match(/^gs:\/\/[^\/]+\/(.+)$/);
 		if (match) {
@@ -32,8 +32,6 @@ function getRelativePath(fullPath) {
 		}
 		return fullPath;
 	} else {
-		// For local: /path/to/tmp/members/2024-01-01-members.jsonl.gz
-		// Extract: members/2024-01-01-members.jsonl.gz
 		const basePath = path.resolve(storage.getStoragePath());
 		const resolved = path.resolve(fullPath);
 		return resolved.replace(basePath + path.sep, '');
@@ -44,13 +42,10 @@ function getRelativePath(fullPath) {
  * Upload file to Mixpanel with retry logic
  * @param {string} filePath - Full path to file (GCS or local)
  * @param {Object} options - Upload options
- * @param {string} options.type - Import type ('event', 'user', 'group')
- * @param {string} [options.groupKey] - Group key for group imports
- * @param {number} [options.maxRetries=3] - Maximum retry attempts
  * @returns {Promise<Object>} Upload result
  */
 async function uploadFileWithRetry(filePath, options) {
-	const { type, groupKey, maxRetries = 3 } = options;
+	const { type, groupKey, transformFunc, heavyObjects, maxRetries = 3 } = options;
 	let lastError = null;
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -61,7 +56,9 @@ async function uploadFileWithRetry(filePath, options) {
 				token: mixpanel_token,
 				secret: mixpanel_secret,
 				logs: false,
-				compress: true
+				compress: true,
+				...(transformFunc && { transformFunc }),
+				...(heavyObjects && { heavyObjects })
 			};
 
 			let result;
@@ -103,25 +100,55 @@ async function uploadFileWithRetry(filePath, options) {
 }
 
 /**
- * Generic function to load analytics files to Mixpanel
+ * Load member analytics files to Mixpanel (events + profiles)
  * @param {Array<string>} files - Array of file paths
- * @param {string} label - Label for logging
- * @param {Object} uploadOptions - Options for upload
+ * @param {Object} context - Context with slackMembers cache
  * @returns {Promise<{uploaded: number, failed: number, results: Array}>}
  */
-async function loadFiles(files, label, uploadOptions) {
-	console.log(`\n📤 LOAD: Uploading ${files.length} ${label} files to Mixpanel`);
+export async function loadMemberAnalytics(files, context) {
+	const { slackMembers } = context;
 
-	const results = [];
-	let uploaded = 0;
-	let failed = 0;
+	console.log(`\n📤 LOAD: Uploading ${files.length} member analytics files to Mixpanel`);
 
+	const heavyObjects = {
+		slackMembers,
+		slack_prefix
+	};
+
+	const results = {
+		events: { uploaded: 0, failed: 0, results: [] },
+		profiles: { uploaded: 0, failed: 0, results: [] }
+	};
+
+	// Upload events first
+	console.log(`\n  → Uploading member events...`);
 	for (const file of files) {
-		const result = await uploadFileWithRetry(file, uploadOptions);
+		const result = await uploadFileWithRetry(file, {
+			type: 'event',
+			transformFunc: transformMemberEvent,
+			heavyObjects
+		});
 
 		if (result.success) {
-			uploaded++;
-			// Delete file after successful upload
+			results.events.uploaded++;
+		} else {
+			results.events.failed++;
+		}
+		results.events.results.push(result);
+	}
+
+	// Then upload profiles
+	console.log(`\n  → Uploading member profiles...`);
+	for (const file of files) {
+		const result = await uploadFileWithRetry(file, {
+			type: 'user',
+			transformFunc: transformMemberProfile,
+			heavyObjects
+		});
+
+		if (result.success) {
+			results.profiles.uploaded++;
+			// Delete file after successful profile upload (last step)
 			try {
 				const relativePath = getRelativePath(file);
 				await storage.deleteFile(relativePath);
@@ -129,33 +156,103 @@ async function loadFiles(files, label, uploadOptions) {
 				console.warn(`⚠️  Failed to delete file ${file}:`, deleteError.message);
 			}
 		} else {
-			failed++;
+			results.profiles.failed++;
 		}
-
-		results.push(result);
+		results.profiles.results.push(result);
 	}
 
-	console.log(`\n📊 LOAD COMPLETE: ${uploaded} uploaded, ${failed} failed`);
+	const totalUploaded = results.events.uploaded + results.profiles.uploaded;
+	const totalFailed = results.events.failed + results.profiles.failed;
 
-	return { uploaded, failed, results };
+	console.log(`\n📊 MEMBER LOAD COMPLETE:`);
+	console.log(`   Events: ${results.events.uploaded} uploaded, ${results.events.failed} failed`);
+	console.log(`   Profiles: ${results.profiles.uploaded} uploaded, ${results.profiles.failed} failed`);
+	console.log(`   Total: ${totalUploaded} uploaded, ${totalFailed} failed`);
+
+	return {
+		uploaded: totalUploaded,
+		failed: totalFailed,
+		results
+	};
 }
 
 /**
- * Load member analytics files to Mixpanel
+ * Load channel analytics files to Mixpanel (events + profiles)
  * @param {Array<string>} files - Array of file paths
+ * @param {Object} context - Context with slackChannels cache
  * @returns {Promise<{uploaded: number, failed: number, results: Array}>}
  */
-export async function loadMemberAnalytics(files) {
-	return loadFiles(files, 'member analytics', { type: 'event' });
-}
+export async function loadChannelAnalytics(files, context) {
+	const { slackChannels } = context;
 
-/**
- * Load channel analytics files to Mixpanel
- * @param {Array<string>} files - Array of file paths
- * @returns {Promise<{uploaded: number, failed: number, results: Array}>}
- */
-export async function loadChannelAnalytics(files) {
-	return loadFiles(files, 'channel analytics', { type: 'event' });
+	console.log(`\n📤 LOAD: Uploading ${files.length} channel analytics files to Mixpanel`);
+
+	const heavyObjects = {
+		slackChannels,
+		slack_prefix,
+		channel_group_key
+	};
+
+	const results = {
+		events: { uploaded: 0, failed: 0, results: [] },
+		profiles: { uploaded: 0, failed: 0, results: [] }
+	};
+
+	// Upload events first
+	console.log(`\n  → Uploading channel events...`);
+	for (const file of files) {
+		const result = await uploadFileWithRetry(file, {
+			type: 'event',
+			transformFunc: transformChannelEvent,
+			heavyObjects
+		});
+
+		if (result.success) {
+			results.events.uploaded++;
+		} else {
+			results.events.failed++;
+		}
+		results.events.results.push(result);
+	}
+
+	// Then upload profiles
+	console.log(`\n  → Uploading channel group profiles...`);
+	for (const file of files) {
+		const result = await uploadFileWithRetry(file, {
+			type: 'group',
+			groupKey: channel_group_key,
+			transformFunc: transformChannelProfile,
+			heavyObjects
+		});
+
+		if (result.success) {
+			results.profiles.uploaded++;
+			// Delete file after successful profile upload (last step)
+			try {
+				const relativePath = getRelativePath(file);
+				await storage.deleteFile(relativePath);
+			} catch (deleteError) {
+				console.warn(`⚠️  Failed to delete file ${file}:`, deleteError.message);
+			}
+		} else {
+			results.profiles.failed++;
+		}
+		results.profiles.results.push(result);
+	}
+
+	const totalUploaded = results.events.uploaded + results.profiles.uploaded;
+	const totalFailed = results.events.failed + results.profiles.failed;
+
+	console.log(`\n📊 CHANNEL LOAD COMPLETE:`);
+	console.log(`   Events: ${results.events.uploaded} uploaded, ${results.events.failed} failed`);
+	console.log(`   Profiles: ${results.profiles.uploaded} uploaded, ${results.profiles.failed} failed`);
+	console.log(`   Total: ${totalUploaded} uploaded, ${totalFailed} failed`);
+
+	return {
+		uploaded: totalUploaded,
+		failed: totalFailed,
+		results
+	};
 }
 
 export default {
