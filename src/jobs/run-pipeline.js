@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * @fileoverview Direct pipeline runner without HTTP server
+ * @fileoverview Direct pipeline runner without HTTP server - file-based architecture
  * @module RunPipeline
  */
 
 import dotenv from 'dotenv';
-import slackMemberPipeline from '../models/slack-members.js';
-import slackChannelPipeline from '../models/slack-channels.js';
-import { devTask, writeTask, uploadTask, cloudTask } from './tasks.js';
+import { extractMemberAnalytics, extractChannelAnalytics } from './extract.js';
+import { loadMemberAnalytics, loadChannelAnalytics } from './load.js';
 import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
@@ -18,13 +17,7 @@ dayjs.extend(utc);
 const { sLog, timer } = akTools;
 
 const {
-	NODE_ENV = "production",
-	CONCURRENCY = 1,
-	mixpanel_token,
-	mixpanel_secret,
-	channel_group_key = 'channel_id',
-	gcs_project,
-	gcs_path
+	NODE_ENV = "production"
 } = process.env;
 
 /**
@@ -117,65 +110,17 @@ function getDateRange(params) {
 	};
 }
 
-/**
- * Get work function based on environment
- * @param {string} envMode - Environment mode override
- * @returns {Function} Work function
- */
-function getWorkFunction(envMode) {
-	const env = { mixpanel_token, mixpanel_secret, channel_group_key, gcs_project, gcs_path, NODE_ENV: envMode || NODE_ENV };
-
-	const actualEnv = envMode || NODE_ENV;
-	switch (actualEnv) {
-		case "backfill":
-			return (jobs, stats) => cloudTask(jobs, stats, env);
-		case "cloud":
-			return (jobs, stats) => cloudTask(jobs, stats, env);
-		case "test":
-			return (jobs, stats) => writeTask(jobs, stats, env);
-		case "dev":
-			return (jobs, stats) => devTask(jobs, stats, env);
-		case "production":
-			return (jobs, stats) => uploadTask(jobs, stats, env);
-		default:
-			return (jobs, stats) => uploadTask(jobs, stats, env);
-	}
-}
 
 /**
- * Create stats tracking object
- * @returns {Object} Stats object
- */
-function createStats() {
-	return {
-		events: { processed: 0, uploaded: 0 },
-		users: { processed: 0, uploaded: 0 },
-		groups: { processed: 0, uploaded: 0 },
-
-		reset() {
-			this.events = { processed: 0, uploaded: 0 };
-			this.users = { processed: 0, uploaded: 0 };
-			this.groups = { processed: 0, uploaded: 0 };
-		},
-
-		report() {
-			return {
-				events: { ...this.events },
-				users: { ...this.users },
-				groups: { ...this.groups }
-			};
-		}
-	};
-}
-
-/**
- * Run the complete pipeline (members and channels)
+ * Run the complete pipeline (members and channels) with file-based extract/load
  * @param {Object} options - Pipeline options
  * @param {number} [options.days] - Number of days to process
  * @param {string} [options.start_date] - Start date (YYYY-MM-DD)
  * @param {string} [options.end_date] - End date (YYYY-MM-DD)
  * @param {boolean} [options.backfill] - Run in backfill mode
  * @param {Array<string>} [options.pipelines] - Which pipelines to run (default: ['members', 'channels'])
+ * @param {boolean} [options.extractOnly] - Only extract, don't load
+ * @param {boolean} [options.loadOnly] - Only load existing files, don't extract
  * @returns {Promise<Object>} Pipeline results
  */
 export async function runPipeline(options = {}) {
@@ -185,72 +130,99 @@ export async function runPipeline(options = {}) {
 	try {
 		const params = parseParameters(options);
 		const dateRange = getDateRange(params);
-		const stats = createStats();
-		const work = getWorkFunction(params.env);
 		const pipelines = options.pipelines || ['members', 'channels'];
+		const extractOnly = options.extractOnly || false;
+		const loadOnly = options.loadOnly || false;
 
 		console.log(`\n${'='.repeat(80)}`);
 		console.log(`PIPELINE START: ${params.env || NODE_ENV}`);
 		console.log(`Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
 		console.log(`Pipelines: ${pipelines.join(', ')}`);
-		console.log(`Concurrency: ${CONCURRENCY}`);
+		console.log(`Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
 		console.log(`${'='.repeat(80)}\n`);
 
-		const pipelineJobs = [];
+		const extractResults = {};
+		const loadResults = {};
 
-		// Run members pipeline
-		if (pipelines.includes('members')) {
-			sLog('PIPELINE: Fetching member data...');
-			const { slackMemberEvents, slackMemberProfiles } = await slackMemberPipeline(dateRange.simpleStart, dateRange.simpleEnd);
+		// EXTRACT STAGE
+		if (!loadOnly) {
+			console.log(`\n${'='.repeat(80)}`);
+			console.log(`STAGE 1: EXTRACT`);
+			console.log(`${'='.repeat(80)}`);
 
-			const memberJobs = [
-				{ stream: slackMemberEvents, type: "event", label: "slack-members" },
-				{ stream: slackMemberProfiles, type: "user", label: "slack-member-profiles" }
-			];
-
-			pipelineJobs.push(work(memberJobs, stats));
-		}
-
-		// Run channels pipeline
-		if (pipelines.includes('channels')) {
-			sLog('PIPELINE: Fetching channel data...');
-			const { slackChannelEvents, slackChannelProfiles } = await slackChannelPipeline(dateRange.simpleStart, dateRange.simpleEnd);
-
-			const channelJobs = [
-				{ stream: slackChannelEvents, type: "event", label: "slack-channels" },
-				{ stream: slackChannelProfiles, type: "group", groupKey: channel_group_key, label: "slack-channel-profiles" }
-			];
-
-			pipelineJobs.push(work(channelJobs, stats));
-		}
-
-		// Execute all pipelines
-		const results = await Promise.allSettled(pipelineJobs);
-
-		let success = [];
-		let failed = [];
-
-		results.forEach((result) => {
-			if (result.status === "fulfilled") {
-				result.value.forEach(innerResult => {
-					if (innerResult.status === "fulfilled") {
-						success.push(innerResult.value);
-					} else {
-						failed.push(innerResult.reason);
-					}
-				});
-			} else {
-				failed.push(result.reason);
+			if (pipelines.includes('members')) {
+				extractResults.members = await extractMemberAnalytics(
+					dateRange.simpleStart,
+					dateRange.simpleEnd
+				);
 			}
-		});
+
+			if (pipelines.includes('channels')) {
+				extractResults.channels = await extractChannelAnalytics(
+					dateRange.simpleStart,
+					dateRange.simpleEnd
+				);
+			}
+		}
+
+		// LOAD STAGE
+		if (!extractOnly) {
+			console.log(`\n${'='.repeat(80)}`);
+			console.log(`STAGE 2: LOAD`);
+			console.log(`${'='.repeat(80)}`);
+
+			if (pipelines.includes('members')) {
+				const files = loadOnly
+					? [] // TODO: discover existing files
+					: extractResults.members?.files || [];
+
+				if (files.length > 0) {
+					loadResults.members = await loadMemberAnalytics(files);
+				} else {
+					console.log(`⚠️  No member files to load`);
+				}
+			}
+
+			if (pipelines.includes('channels')) {
+				const files = loadOnly
+					? [] // TODO: discover existing files
+					: extractResults.channels?.files || [];
+
+				if (files.length > 0) {
+					loadResults.channels = await loadChannelAnalytics(files);
+				} else {
+					console.log(`⚠️  No channel files to load`);
+				}
+			}
+		}
 
 		const timing = t.end();
 
 		console.log(`\n${'='.repeat(80)}`);
 		console.log(`PIPELINE COMPLETE: ${timing}`);
-		console.log(`Success: ${success.length} | Failed: ${failed.length}`);
-		console.log(`Stats:`, JSON.stringify(stats.report(), null, 2));
-		console.log(`${'='.repeat(80)}\n`);
+		console.log(`${'='.repeat(80)}`);
+
+		if (extractResults.members || extractResults.channels) {
+			console.log(`\nEXTRACT RESULTS:`);
+			if (extractResults.members) {
+				console.log(`  Members: ${extractResults.members.extracted} extracted, ${extractResults.members.skipped} skipped`);
+			}
+			if (extractResults.channels) {
+				console.log(`  Channels: ${extractResults.channels.extracted} extracted, ${extractResults.channels.skipped} skipped`);
+			}
+		}
+
+		if (loadResults.members || loadResults.channels) {
+			console.log(`\nLOAD RESULTS:`);
+			if (loadResults.members) {
+				console.log(`  Members: ${loadResults.members.uploaded} uploaded, ${loadResults.members.failed} failed`);
+			}
+			if (loadResults.channels) {
+				console.log(`  Channels: ${loadResults.channels.uploaded} uploaded, ${loadResults.channels.failed} failed`);
+			}
+		}
+
+		console.log();
 
 		return {
 			status: 'success',
@@ -260,8 +232,8 @@ export async function runPipeline(options = {}) {
 				end_date: dateRange.end,
 				days: dateRange.days
 			},
-			results: { success, failed },
-			stats: stats.report()
+			extract: extractResults,
+			load: loadResults
 		};
 
 	} catch (error) {

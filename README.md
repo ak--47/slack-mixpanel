@@ -150,18 +150,28 @@ node src/models/slack-members.js
 
 ## 🎯 Data Pipeline
 
+**Architecture:**
+The pipeline uses a file-based Extract-Load pattern that separates data extraction from Mixpanel uploads:
+
+1. **Extract Stage**: Fetch data from Slack Analytics API and write to JSONL.gz files
+   - Files stored in GCS (`gcs_path` env) or local `./tmp/` directory
+   - Automatic resumption: skips dates that already have files
+   - File structure: `members/YYYY-MM-DD-members.jsonl.gz`, `channels/YYYY-MM-DD-channels.jsonl.gz`
+
+2. **Load Stage**: Upload files to Mixpanel using `mixpanel-import`
+   - Direct GCS URL support (no download needed for cloud storage)
+   - 3-retry logic with exponential backoff
+   - Automatic file cleanup after successful upload
+
 **Imported to Mixpanel:**
 - **Member Events** - Daily user activity summaries
-- **Member Profiles** - User information and metadata  
 - **Channel Events** - Daily channel activity summaries
-- **Channel Profiles** - Channel metadata and settings
 
-**Processing Modes:**
-- `dev` - Write to local files (`tmp/` directory)
-- `production` - Upload directly to Mixpanel
-- `backfill` - Process historical data
-- `cloud` - Upload to Google Cloud Storage
-- `test` - Write mode for testing
+**Benefits:**
+- **Resumable**: Failed jobs can resume from where they left off
+- **Memory Efficient**: No Highland streams, files are processed one at a time
+- **Debuggable**: Raw data files available for inspection
+- **Fault Tolerant**: Extraction and loading are independent stages
 
 ## 🧪 Development
 
