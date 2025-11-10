@@ -48,7 +48,7 @@ service_name=slack-mixpanel-analytics
 ```bash
 NODE_ENV=production             # Environment mode
 PORT=8080                       # Server port
-CONCURRENCY=2                   # Slack API concurrency (rate limiting)
+CONCURRENCY=1                   # Slack API concurrency (default: 1 for conservative rate limiting)
 slack_prefix=https://yourworkspace.slack.com/archives
 company_domain=yourcompany.com  # Email domain filter
 channel_group_key=channel_id    # Mixpanel group key for channels
@@ -59,9 +59,33 @@ gcs_project=your-gcs-project    # Google Cloud project ID
 gcs_path=gs://bucket/path/      # GCS bucket and path
 ```
 
-## 📊 API Usage
+## 📊 Usage
 
-### HTTP Endpoints
+### Command-Line Scripts (Recommended)
+
+Run pipelines directly without HTTP server. Output streams to both console and log files in `./logs/`:
+
+```bash
+# Process last 7 days
+node scripts/run-all-7days.js
+
+# Process custom date range
+node scripts/run-all-daterange.js 2024-01-01 2024-01-31
+
+# Process full backfill (13 months)
+node scripts/run-all-backfill.js
+```
+
+**Features:**
+- No HTTP server required
+- Live console output with progress tracking
+- Simultaneous logging to `./logs/` directory
+- Conservative rate limiting (1 req/sec with jitter) to avoid Slack API 429s
+- Graceful error handling and cleanup
+
+### HTTP API Endpoints
+
+For cloud deployments and webhook integrations:
 
 **Health Check:**
 ```bash
@@ -116,8 +140,8 @@ Content-Type: application/json
 
 ### Direct Execution
 ```bash
-# Run pipeline directly
-node src/jobs/slack-mixpanel-analytics.js
+# Run pipeline function directly
+node src/jobs/run-pipeline.js
 
 # Test individual components
 node src/services/slack.js
@@ -190,10 +214,12 @@ npm run test:legacy  # Run legacy test.js script
 ## ⚙️ Configuration
 
 ### Rate Limiting
-Slack API rate limits are respected with:
-- Configurable concurrency (`CONCURRENCY` env var)
-- 2-second delays between requests
-- Automatic retry on rate limit hits
+Slack Analytics API rate limits are respected with ultra-conservative settings:
+- **Concurrency**: 1 (sequential requests only, configurable via `CONCURRENCY` env var)
+- **Base delay**: 1500ms between requests
+- **Randomized jitter**: +0-1500ms (total delay: 1500-3000ms per request)
+- **Automatic retry**: 60-second wait on 429 rate limit errors
+- **Burst protection**: Prevents predictable request patterns
 
 ### Performance
 - Direct array uploads to `mixpanel-import`
