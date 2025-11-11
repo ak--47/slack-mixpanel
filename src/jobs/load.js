@@ -71,6 +71,10 @@ async function uploadBatch(files, options) {
 				recordType: type, // 'event', 'user', or 'group'
 				logs: false,
 				compress: true,
+				fixData: true,
+				removeNulls: true,
+				abridged: true,
+				fixTime: true,				
 				...(transformFunc && { transformFunc }),
 				...(heavyObjects && { heavyObjects }),
 				...(groupKey && { groupKey })
