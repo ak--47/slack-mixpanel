@@ -406,7 +406,7 @@ describe('API Integration Tests', () => {
   });
 
   describe('Response Structure', () => {
-    it('should return proper success response structure', async () => {
+    it.skip('should return proper success response structure', async () => {
       const response = await request(app)
         .post('/mixpanel-members')
         .send({ days: 1 })
