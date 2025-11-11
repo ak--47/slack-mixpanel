@@ -78,11 +78,24 @@ function parseParameters(req) {
 	if (params.start_date && !dateRegex.test(params.start_date)) {
 		throw new Error('Parameter "start_date" must be in YYYY-MM-DD format');
 	}
-	
+
 	if (params.end_date && !dateRegex.test(params.end_date)) {
 		throw new Error('Parameter "end_date" must be in YYYY-MM-DD format');
 	}
-	
+
+	// Parse boolean parameters (from query strings or JSON)
+	if (params.cleanup !== undefined) {
+		params.cleanup = params.cleanup === 'true' || params.cleanup === true;
+	}
+
+	if (params.extractOnly !== undefined) {
+		params.extractOnly = params.extractOnly === 'true' || params.extractOnly === true;
+	}
+
+	if (params.loadOnly !== undefined) {
+		params.loadOnly = params.loadOnly === 'true' || params.loadOnly === true;
+	}
+
 	return params;
 }
 
@@ -99,16 +112,25 @@ if (NODE_ENV === 'dev') {
 
 // Health check endpoints
 app.get('/', (req, res) => {
-	res.json({ 
-		status: "ok", 
+	res.json({
+		status: "ok",
 		message: "Slack-Mixpanel pipeline service is alive",
 		env: NODE_ENV,
 		timestamp: new Date().toISOString(),
 		endpoints: {
 			health: "GET /health - Health check",
-			members: "POST /members - Process Slack members pipeline",
-			channels: "POST /channels - Process Slack channels pipeline", 
-			all: "POST /all - Process both members and channels pipelines"
+			members: "POST /mixpanel-members - Process Slack members pipeline",
+			channels: "POST /mixpanel-channels - Process Slack channels pipeline",
+			all: "POST /mixpanel-all - Process both members and channels pipelines"
+		},
+		parameters: {
+			days: "number - Number of days to process (default: 2)",
+			start_date: "string - Start date in YYYY-MM-DD format",
+			end_date: "string - End date in YYYY-MM-DD format",
+			backfill: "boolean - Run in backfill mode (~13 months)",
+			cleanup: "boolean - Delete files after successful upload (default: false)",
+			extractOnly: "boolean - Only extract, don't load (default: false)",
+			loadOnly: "boolean - Only load existing files (default: false)"
 		}
 	});
 });

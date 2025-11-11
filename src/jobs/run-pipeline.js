@@ -125,6 +125,7 @@ function getDateRange(params) {
  * @param {Array<string>} [options.pipelines] - Which pipelines to run (default: ['members', 'channels'])
  * @param {boolean} [options.extractOnly] - Only extract, don't load
  * @param {boolean} [options.loadOnly] - Only load existing files, don't extract
+ * @param {boolean} [options.cleanup=false] - Delete files after successful upload
  * @returns {Promise<Object>} Pipeline results
  */
 export async function runPipeline(options = {}) {
@@ -137,12 +138,14 @@ export async function runPipeline(options = {}) {
 		const pipelines = options.pipelines || ['members', 'channels'];
 		const extractOnly = options.extractOnly || false;
 		const loadOnly = options.loadOnly || false;
+		const cleanup = options.cleanup || false;
 
 		console.log(`\n${'='.repeat(80)}`);
 		console.log(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);
 		console.log(`[MAIN] Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
 		console.log(`[MAIN] Pipelines: ${pipelines.join(', ')}`);
 		console.log(`[MAIN] Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
+		console.log(`[MAIN] Cleanup: ${cleanup ? 'Enabled' : 'Disabled'}`);
 		console.log(`${'='.repeat(80)}\n`);
 
 		// Cache channels and members for transforms (only needed for load stage)
@@ -196,7 +199,7 @@ export async function runPipeline(options = {}) {
 					: extractResults.members?.files || [];
 
 				if (files.length > 0) {
-					loadResults.members = await loadMemberAnalytics(files, { slackMembers });
+					loadResults.members = await loadMemberAnalytics(files, { slackMembers }, { cleanup });
 				} else {
 					console.log(`[LOAD] ⚠️  No member files to load`);
 				}
@@ -208,7 +211,7 @@ export async function runPipeline(options = {}) {
 					: extractResults.channels?.files || [];
 
 				if (files.length > 0) {
-					loadResults.channels = await loadChannelAnalytics(files, { slackChannels });
+					loadResults.channels = await loadChannelAnalytics(files, { slackChannels }, { cleanup });
 				} else {
 					console.log(`[LOAD] ⚠️  No channel files to load`);
 				}

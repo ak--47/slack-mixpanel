@@ -23,7 +23,7 @@ export function transformMemberEvent(record, context) {
 	const memberDetails = slackMembers.find((m) => m.id === record.user_id);
 
 	const event = {
-		event: 'slack activity',
+		event: 'daily user activity',
 		distinct_id: record.email_address.toLowerCase(),
 		time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 		properties: {

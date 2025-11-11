@@ -20,7 +20,7 @@ export function transformChannelEvent(record, context) {
 	const channelDetails = slackChannels.find((c) => c.id === record.channel_id);
 
 	const event = {
-		event: 'slack channel activity',
+		event: 'daily channel activity',
 		distinct_id: record.channel_id,
 		time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 		properties: {
