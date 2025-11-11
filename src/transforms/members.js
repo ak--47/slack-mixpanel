@@ -24,11 +24,11 @@ export function transformMemberEvent(record, context) {
 
 	const event = {
 		event: 'daily user activity',
-		distinct_id: record.email_address.toLowerCase(),
-		time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
+		// distinct_id: record.email_address.toLowerCase(),		
 		properties: {
 			...record,
-			user_id: record.user_id,
+			$user_id: record.user_id,
+			time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 			email: record.email_address,
 			team_id: record.team_id,
 			'#  → SLACK': `${slack_prefix}/${record.user_id}`,
@@ -61,10 +61,10 @@ export function transformMemberProfile(record, context) {
 	const memberDetails = slackMembers.find((m) => m.id === record.user_id);
 
 	const profile = {
-		$distinct_id: record.email_address.toLowerCase(),
-		$email: record.email_address,
+		$distinct_id: record.email_address.toLowerCase(),		
 		$set: {
 			slack_id: record.user_id,
+			$email: record.email_address,
 			slack_team_id: record.team_id,
 			'#  → SLACK': `${slack_prefix}/${record.user_id}`,
 			is_active: record.is_active

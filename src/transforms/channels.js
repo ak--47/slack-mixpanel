@@ -21,10 +21,10 @@ export function transformChannelEvent(record, context) {
 
 	const event = {
 		event: 'daily channel activity',
-		distinct_id: record.channel_id,
-		time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 		properties: {
 			...record,
+			distinct_id: record.channel_id,
+			time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 			channel_id: record.channel_id,
 			date: record.date
 		}
@@ -81,9 +81,9 @@ export function transformChannelProfile(record, context) {
 
 	// Add channel details if available
 	if (channelDetails) {
-		profile.$set.name = `#${channelDetails.name}`;
+		profile.$set.$name = `#${channelDetails.name}`;
 		profile.$set['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
-		profile.$set.email = `${slack_prefix}/${record.channel_id}`;
+		profile.$set.$email = `${slack_prefix}/${record.channel_id}`;
 		profile.$set.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
 
 		if (channelDetails.purpose?.value) {
