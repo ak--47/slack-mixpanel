@@ -102,12 +102,15 @@ function getDateRange(params) {
 	if (params.start_date) start = dayjs.utc(params.start_date).format(sfdcDateTimeFmt);
 	if (params.end_date) end = dayjs.utc(params.end_date).format(sfdcDateTimeFmt);
 
+	// Recalculate DAYS based on actual start/end dates
+	const actualDays = dayjs.utc(end).diff(dayjs.utc(start), 'd');
+
 	return {
 		start,
 		end,
 		simpleStart: dayjs.utc(start).format("YYYY-MM-DD"),
 		simpleEnd: dayjs.utc(end).format("YYYY-MM-DD"),
-		days: DAYS
+		days: actualDays
 	};
 }
 
@@ -136,10 +139,10 @@ export async function runPipeline(options = {}) {
 		const loadOnly = options.loadOnly || false;
 
 		console.log(`\n${'='.repeat(80)}`);
-		console.log(`PIPELINE START: ${params.env || NODE_ENV}`);
-		console.log(`Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
-		console.log(`Pipelines: ${pipelines.join(', ')}`);
-		console.log(`Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
+		console.log(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);
+		console.log(`[MAIN] Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
+		console.log(`[MAIN] Pipelines: ${pipelines.join(', ')}`);
+		console.log(`[MAIN] Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
 		console.log(`${'='.repeat(80)}\n`);
 
 		// Cache channels and members for transforms (only needed for load stage)
@@ -147,16 +150,14 @@ export async function runPipeline(options = {}) {
 		let slackChannels = [];
 
 		if (!extractOnly) {
-			console.log(`📦 Caching Slack workspace data...`);
 			if (pipelines.includes('members')) {
 				slackMembers = await slackService.getUsers();
-				console.log(`   ✓ Cached ${slackMembers.length} members`);
+				console.log(`[SLACK] Cached ${slackMembers.length} members`);
 			}
 			if (pipelines.includes('channels')) {
 				slackChannels = await slackService.getChannels();
-				console.log(`   ✓ Cached ${slackChannels.length} channels`);
+				console.log(`[SLACK] Cached ${slackChannels.length} channels`);
 			}
-			console.log();
 		}
 
 		const extractResults = {};
@@ -165,7 +166,7 @@ export async function runPipeline(options = {}) {
 		// EXTRACT STAGE
 		if (!loadOnly) {
 			console.log(`\n${'='.repeat(80)}`);
-			console.log(`STAGE 1: EXTRACT`);
+			console.log(`[MAIN] STAGE 1: EXTRACT`);
 			console.log(`${'='.repeat(80)}`);
 
 			if (pipelines.includes('members')) {
@@ -186,7 +187,7 @@ export async function runPipeline(options = {}) {
 		// LOAD STAGE
 		if (!extractOnly) {
 			console.log(`\n${'='.repeat(80)}`);
-			console.log(`STAGE 2: LOAD`);
+			console.log(`[MAIN] STAGE 2: LOAD`);
 			console.log(`${'='.repeat(80)}`);
 
 			if (pipelines.includes('members')) {
@@ -197,7 +198,7 @@ export async function runPipeline(options = {}) {
 				if (files.length > 0) {
 					loadResults.members = await loadMemberAnalytics(files, { slackMembers });
 				} else {
-					console.log(`⚠️  No member files to load`);
+					console.log(`[LOAD] ⚠️  No member files to load`);
 				}
 			}
 
@@ -209,7 +210,7 @@ export async function runPipeline(options = {}) {
 				if (files.length > 0) {
 					loadResults.channels = await loadChannelAnalytics(files, { slackChannels });
 				} else {
-					console.log(`⚠️  No channel files to load`);
+					console.log(`[LOAD] ⚠️  No channel files to load`);
 				}
 			}
 		}
@@ -217,30 +218,8 @@ export async function runPipeline(options = {}) {
 		const timing = t.end();
 
 		console.log(`\n${'='.repeat(80)}`);
-		console.log(`PIPELINE COMPLETE: ${timing}`);
-		console.log(`${'='.repeat(80)}`);
-
-		if (extractResults.members || extractResults.channels) {
-			console.log(`\nEXTRACT RESULTS:`);
-			if (extractResults.members) {
-				console.log(`  Members: ${extractResults.members.extracted} extracted, ${extractResults.members.skipped} skipped`);
-			}
-			if (extractResults.channels) {
-				console.log(`  Channels: ${extractResults.channels.extracted} extracted, ${extractResults.channels.skipped} skipped`);
-			}
-		}
-
-		if (loadResults.members || loadResults.channels) {
-			console.log(`\nLOAD RESULTS:`);
-			if (loadResults.members) {
-				console.log(`  Members: ${loadResults.members.uploaded} uploaded, ${loadResults.members.failed} failed`);
-			}
-			if (loadResults.channels) {
-				console.log(`  Channels: ${loadResults.channels.uploaded} uploaded, ${loadResults.channels.failed} failed`);
-			}
-		}
-
-		console.log();
+		console.log(`[MAIN] ✅ Pipeline Complete: ${timing}`);
+		console.log(`${'='.repeat(80)}\n`);
 
 		return {
 			status: 'success',

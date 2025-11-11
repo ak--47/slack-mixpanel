@@ -45,12 +45,19 @@ function getRelativePath(fullPath) {
  * @returns {Promise<Object>} Upload result
  */
 async function uploadFileWithRetry(filePath, options) {
-	const { type, groupKey, transformFunc, heavyObjects, maxRetries = 3 } = options;
+	const { type, groupKey, transformFunc, heavyObjects, maxRetries = 3, progress = '' } = options;
 	let lastError = null;
+
+	// Extract filename for cleaner logs
+	const filename = path.basename(filePath);
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
 		try {
-			console.log(`📤 Uploading ${filePath} (attempt ${attempt}/${maxRetries})...`);
+			if (attempt === 1) {
+				console.log(`[MIXPANEL] ${progress} Uploading ${filename}...`);
+			} else {
+				console.log(`[MIXPANEL] ${progress} Retry ${attempt}/${maxRetries}: ${filename}`);
+			}
 
 			const importOptions = {
 				token: mixpanel_token,
@@ -76,16 +83,15 @@ async function uploadFileWithRetry(filePath, options) {
 				throw new Error(`Unknown import type: ${type}`);
 			}
 
-			console.log(`✅ Upload successful: ${filePath}`);
+			console.log(`[MIXPANEL] ${progress} ✅ ${filename}`);
 			return { success: true, filePath, result, attempts: attempt };
 
 		} catch (error) {
 			lastError = error;
-			console.error(`❌ Upload attempt ${attempt} failed: ${error.message}`);
+			console.error(`[MIXPANEL] ${progress} ❌ ${filename}: ${error.message}`);
 
 			if (attempt < maxRetries) {
 				const delay = attempt * 2000; // Exponential backoff: 2s, 4s, 6s
-				console.log(`⏳ Waiting ${delay}ms before retry...`);
 				await new Promise(resolve => setTimeout(resolve, delay));
 			}
 		}
@@ -107,8 +113,9 @@ async function uploadFileWithRetry(filePath, options) {
  */
 export async function loadMemberAnalytics(files, context) {
 	const { slackMembers } = context;
+	const totalFiles = files.length;
 
-	console.log(`\n📤 LOAD: Uploading ${files.length} member analytics files to Mixpanel`);
+	console.log(`\n[LOAD] Member analytics: ${totalFiles} files to Mixpanel`);
 
 	const heavyObjects = {
 		slackMembers,
@@ -121,12 +128,17 @@ export async function loadMemberAnalytics(files, context) {
 	};
 
 	// Upload events first
-	console.log(`\n  → Uploading member events...`);
+	console.log(`[LOAD] → Events (${totalFiles} files)`);
+	let currentFile = 0;
 	for (const file of files) {
+		currentFile++;
+		const progress = `[${currentFile}/${totalFiles}]`;
+
 		const result = await uploadFileWithRetry(file, {
 			type: 'event',
 			transformFunc: transformMemberEvent,
-			heavyObjects
+			heavyObjects,
+			progress
 		});
 
 		if (result.success) {
@@ -138,12 +150,17 @@ export async function loadMemberAnalytics(files, context) {
 	}
 
 	// Then upload profiles
-	console.log(`\n  → Uploading member profiles...`);
+	console.log(`[LOAD] → Profiles (${totalFiles} files)`);
+	currentFile = 0;
 	for (const file of files) {
+		currentFile++;
+		const progress = `[${currentFile}/${totalFiles}]`;
+
 		const result = await uploadFileWithRetry(file, {
 			type: 'user',
 			transformFunc: transformMemberProfile,
-			heavyObjects
+			heavyObjects,
+			progress
 		});
 
 		if (result.success) {
@@ -153,7 +170,7 @@ export async function loadMemberAnalytics(files, context) {
 				const relativePath = getRelativePath(file);
 				await storage.deleteFile(relativePath);
 			} catch (deleteError) {
-				console.warn(`⚠️  Failed to delete file ${file}:`, deleteError.message);
+				console.warn(`[LOAD] ⚠️  Failed to delete ${file}: ${deleteError.message}`);
 			}
 		} else {
 			results.profiles.failed++;
@@ -164,10 +181,7 @@ export async function loadMemberAnalytics(files, context) {
 	const totalUploaded = results.events.uploaded + results.profiles.uploaded;
 	const totalFailed = results.events.failed + results.profiles.failed;
 
-	console.log(`\n📊 MEMBER LOAD COMPLETE:`);
-	console.log(`   Events: ${results.events.uploaded} uploaded, ${results.events.failed} failed`);
-	console.log(`   Profiles: ${results.profiles.uploaded} uploaded, ${results.profiles.failed} failed`);
-	console.log(`   Total: ${totalUploaded} uploaded, ${totalFailed} failed`);
+	console.log(`[LOAD] ✅ Members complete: ${totalUploaded} uploaded, ${totalFailed} failed`);
 
 	return {
 		uploaded: totalUploaded,
@@ -184,8 +198,9 @@ export async function loadMemberAnalytics(files, context) {
  */
 export async function loadChannelAnalytics(files, context) {
 	const { slackChannels } = context;
+	const totalFiles = files.length;
 
-	console.log(`\n📤 LOAD: Uploading ${files.length} channel analytics files to Mixpanel`);
+	console.log(`\n[LOAD] Channel analytics: ${totalFiles} files to Mixpanel`);
 
 	const heavyObjects = {
 		slackChannels,
@@ -199,12 +214,17 @@ export async function loadChannelAnalytics(files, context) {
 	};
 
 	// Upload events first
-	console.log(`\n  → Uploading channel events...`);
+	console.log(`[LOAD] → Events (${totalFiles} files)`);
+	let currentFile = 0;
 	for (const file of files) {
+		currentFile++;
+		const progress = `[${currentFile}/${totalFiles}]`;
+
 		const result = await uploadFileWithRetry(file, {
 			type: 'event',
 			transformFunc: transformChannelEvent,
-			heavyObjects
+			heavyObjects,
+			progress
 		});
 
 		if (result.success) {
@@ -216,13 +236,18 @@ export async function loadChannelAnalytics(files, context) {
 	}
 
 	// Then upload profiles
-	console.log(`\n  → Uploading channel group profiles...`);
+	console.log(`[LOAD] → Group Profiles (${totalFiles} files)`);
+	currentFile = 0;
 	for (const file of files) {
+		currentFile++;
+		const progress = `[${currentFile}/${totalFiles}]`;
+
 		const result = await uploadFileWithRetry(file, {
 			type: 'group',
 			groupKey: channel_group_key,
 			transformFunc: transformChannelProfile,
-			heavyObjects
+			heavyObjects,
+			progress
 		});
 
 		if (result.success) {
@@ -232,7 +257,7 @@ export async function loadChannelAnalytics(files, context) {
 				const relativePath = getRelativePath(file);
 				await storage.deleteFile(relativePath);
 			} catch (deleteError) {
-				console.warn(`⚠️  Failed to delete file ${file}:`, deleteError.message);
+				console.warn(`[LOAD] ⚠️  Failed to delete ${file}: ${deleteError.message}`);
 			}
 		} else {
 			results.profiles.failed++;
@@ -243,10 +268,7 @@ export async function loadChannelAnalytics(files, context) {
 	const totalUploaded = results.events.uploaded + results.profiles.uploaded;
 	const totalFailed = results.events.failed + results.profiles.failed;
 
-	console.log(`\n📊 CHANNEL LOAD COMPLETE:`);
-	console.log(`   Events: ${results.events.uploaded} uploaded, ${results.events.failed} failed`);
-	console.log(`   Profiles: ${results.profiles.uploaded} uploaded, ${results.profiles.failed} failed`);
-	console.log(`   Total: ${totalUploaded} uploaded, ${totalFailed} failed`);
+	console.log(`[LOAD] ✅ Channels complete: ${totalUploaded} uploaded, ${totalFailed} failed`);
 
 	return {
 		uploaded: totalUploaded,

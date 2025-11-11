@@ -86,50 +86,6 @@ function parseParameters(req) {
 	return params;
 }
 
-// Helper function to determine date range
-function getDateRange(params) {
-	const NOW = dayjs.utc();
-	const sfdcDateTimeFmt = "YYYY-MM-DDTHH:mm:ss.SSS[Z]";
-	
-	// Handle backfill mode (13 months)
-	if (params.env === 'backfill') {
-		const BACKFILL_DAYS = 365 + 30; // ~13 months
-		const start = NOW.subtract(BACKFILL_DAYS, "d").format(sfdcDateTimeFmt);
-		const end = NOW.add(2, "d").format(sfdcDateTimeFmt);
-		return {
-			start,
-			end,
-			simpleStart: dayjs.utc(start).format("YYYY-MM-DD"),
-			simpleEnd: dayjs.utc(end).format("YYYY-MM-DD"),
-			days: BACKFILL_DAYS
-		};
-	}
-	
-	// Determine default days based on environment
-	let DAYS;
-	if (NODE_ENV === "dev") DAYS = 1;
-	if (NODE_ENV === "production") DAYS = 2;
-	if (NODE_ENV === "backfill") DAYS = 365;
-	if (NODE_ENV === "test") DAYS = 5;
-	if (NODE_ENV === "cloud") DAYS = 14;
-	if (params.days) DAYS = params.days;
-	
-	let start = NOW.subtract(DAYS, "d").format(sfdcDateTimeFmt);
-	let end = NOW.add(2, "d").format(sfdcDateTimeFmt);
-	
-	if (params.start_date) start = dayjs.utc(params.start_date).format(sfdcDateTimeFmt);
-	if (params.end_date) end = dayjs.utc(params.end_date).format(sfdcDateTimeFmt);
-	
-	return {
-		start,
-		end,
-		simpleStart: dayjs.utc(start).format("YYYY-MM-DD"),
-		simpleEnd: dayjs.utc(end).format("YYYY-MM-DD"),
-		days: DAYS
-	};
-}
-
-
 // Error handling for development
 if (NODE_ENV === 'dev') {
 	process.on('uncaughtException', (e, p) => {

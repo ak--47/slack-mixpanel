@@ -135,7 +135,7 @@ async function analytics(startDate, endDate, type = 'member', streamResult = tru
 	let delta = end.diff(start, 'd');
 	let daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
 	
-	console.log(`📊 SLACK ANALYTICS: Fetching ${daysToFetch.length} days (${startDate} to ${endDate}) with ${CONCURRENCY} concurrent requests`);
+	// Removed verbose per-call logging - progress is shown in extract stage
 	
 	const internalStream = streamResult ? _() : null;
 	const results = [];

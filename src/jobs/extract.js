@@ -20,23 +20,27 @@ const { company_domain } = process.env;
  * @returns {Promise<{extracted: number, skipped: number, files: string[]}>}
  */
 export async function extractMemberAnalytics(startDate, endDate) {
-	console.log(`\n📥 EXTRACT: Member analytics from ${startDate} to ${endDate}`);
-
 	const start = dayjs.utc(startDate);
 	const end = dayjs.utc(endDate);
 	const delta = end.diff(start, 'd');
 	const daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
+	const totalDays = daysToFetch.length;
+
+	console.log(`\n[EXTRACT] Member analytics: ${totalDays} days (${startDate} to ${endDate})`);
 
 	let extracted = 0;
 	let skipped = 0;
 	const files = [];
+	let currentDay = 0;
 
 	for (const date of daysToFetch) {
+		currentDay++;
+		const progress = `[${currentDay}/${totalDays}]`;
 		const filePath = `members/${date}-members.jsonl.gz`;
 
 		// Skip if already exists
 		if (await storage.fileExists(filePath)) {
-			console.log(`⏭️  Skip ${date}: file already exists`);
+			console.log(`[EXTRACT] ${progress} ⏭️  ${date} (cached)`);
 			skipped++;
 			files.push(storage.getFullPath(filePath));
 			continue;
@@ -55,22 +59,22 @@ export async function extractMemberAnalytics(startDate, endDate) {
 				if (filteredData.length > 0) {
 					// Write to file
 					const writtenPath = await storage.writeJSONLGz(filePath, filteredData);
-					console.log(`✅ Extracted ${date}: ${filteredData.length}/${data.length} records (filtered by @${company_domain}) → ${filePath}`);
+					console.log(`[EXTRACT] ${progress} ✅ ${date}: ${filteredData.length}/${data.length} records (@${company_domain})`);
 					extracted++;
 					files.push(writtenPath);
 				} else {
-					console.log(`⚠️  No company domain users for ${date}`);
+					console.log(`[EXTRACT] ${progress} ⚠️  ${date}: No @${company_domain} users`);
 				}
 			} else {
-				console.log(`⚠️  No data for ${date}`);
+				console.log(`[EXTRACT] ${progress} ⚠️  ${date}: No data`);
 			}
 
 		} catch (error) {
-			console.error(`❌ Error extracting ${date}:`, error.message);
+			console.error(`[EXTRACT] ${progress} ❌ ${date}: ${error.message}`);
 		}
 	}
 
-	console.log(`\n📊 EXTRACT COMPLETE: ${extracted} extracted, ${skipped} skipped`);
+	console.log(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
 
 	return { extracted, skipped, files };
 }
@@ -82,23 +86,27 @@ export async function extractMemberAnalytics(startDate, endDate) {
  * @returns {Promise<{extracted: number, skipped: number, files: string[]}>}
  */
 export async function extractChannelAnalytics(startDate, endDate) {
-	console.log(`\n📥 EXTRACT: Channel analytics from ${startDate} to ${endDate}`);
-
 	const start = dayjs.utc(startDate);
 	const end = dayjs.utc(endDate);
 	const delta = end.diff(start, 'd');
 	const daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
+	const totalDays = daysToFetch.length;
+
+	console.log(`\n[EXTRACT] Channel analytics: ${totalDays} days (${startDate} to ${endDate})`);
 
 	let extracted = 0;
 	let skipped = 0;
 	const files = [];
+	let currentDay = 0;
 
 	for (const date of daysToFetch) {
+		currentDay++;
+		const progress = `[${currentDay}/${totalDays}]`;
 		const filePath = `channels/${date}-channels.jsonl.gz`;
 
 		// Skip if already exists
 		if (await storage.fileExists(filePath)) {
-			console.log(`⏭️  Skip ${date}: file already exists`);
+			console.log(`[EXTRACT] ${progress} ⏭️  ${date} (cached)`);
 			skipped++;
 			files.push(storage.getFullPath(filePath));
 			continue;
@@ -111,19 +119,19 @@ export async function extractChannelAnalytics(startDate, endDate) {
 			if (data && data.length > 0) {
 				// Write to file
 				const writtenPath = await storage.writeJSONLGz(filePath, data);
-				console.log(`✅ Extracted ${date}: ${data.length} records → ${filePath}`);
+				console.log(`[EXTRACT] ${progress} ✅ ${date}: ${data.length} records`);
 				extracted++;
 				files.push(writtenPath);
 			} else {
-				console.log(`⚠️  No data for ${date}`);
+				console.log(`[EXTRACT] ${progress} ⚠️  ${date}: No data`);
 			}
 
 		} catch (error) {
-			console.error(`❌ Error extracting ${date}:`, error.message);
+			console.error(`[EXTRACT] ${progress} ❌ ${date}: ${error.message}`);
 		}
 	}
 
-	console.log(`\n📊 EXTRACT COMPLETE: ${extracted} extracted, ${skipped} skipped`);
+	console.log(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
 
 	return { extracted, skipped, files };
 }
