@@ -10,7 +10,7 @@ import { transformChannelEvent, transformChannelProfile } from '../transforms/ch
 import path from 'path';
 import 'dotenv/config';
 
-const { mixpanel_token, mixpanel_secret, slack_prefix, channel_group_key = 'channel_id' } = process.env;
+const { mixpanel_token, mixpanel_secret, slack_prefix, channel_group_key = 'channel_id', NODE_ENV = "unknown" } = process.env;
 
 /**
  * Extract relative path from full file path
@@ -66,6 +66,7 @@ async function uploadBatch(files, options) {
 			};
 
 			// Import options with recordType
+			/** @type {import('mixpanel-import').Options} */
 			const importOptions = {
 				recordType: type, // 'event', 'user', or 'group'
 				logs: false,
@@ -74,6 +75,8 @@ async function uploadBatch(files, options) {
 				...(heavyObjects && { heavyObjects }),
 				...(groupKey && { groupKey })
 			};
+
+			if (NODE_ENV !== "production") importOptions.showProgress = true;
 
 			// Validate group imports
 			if (type === 'group' && !groupKey) {
