@@ -75,9 +75,11 @@ async function uploadBatch(files, options) {
 				removeNulls: true,
 				abridged: true,
 				fixTime: true,
-				responseHandler: (res) => {
-					debugger;
-				},				
+				// responseHandler: (res) => {
+				// 	if (type === "group") {
+				// 		debugger;
+				// 	}					
+				// },								
 				...(transformFunc && { transformFunc }),
 				...(heavyObjects && { heavyObjects }),
 				...(groupKey && { groupKey })

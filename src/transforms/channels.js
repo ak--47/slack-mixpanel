@@ -74,7 +74,7 @@ export function transformChannelProfile(record, context) {
 		$group_id: record.channel_id,
 		$set: {
 			...record,
-			distinct_id: record.channel_id,
+			// distinct_id: record.channel_id,
 			date: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix()
 		}
 	};
