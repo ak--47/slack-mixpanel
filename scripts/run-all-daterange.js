@@ -29,13 +29,6 @@ try {
 		end_date: endDate
 	});
 
-	if (result.stats) {
-		console.log('\n📊 Final Statistics:');
-		console.log(`   Events: ${result.stats.events.processed} processed, ${result.stats.events.uploaded} uploaded`);
-		console.log(`   Users: ${result.stats.users.processed} processed, ${result.stats.users.uploaded} uploaded`);
-		console.log(`   Groups: ${result.stats.groups.processed} processed, ${result.stats.groups.uploaded} uploaded`);
-	}
-
 	console.log(`\n✅ Pipeline completed successfully`);
 	console.log(`📝 Full logs: ${logFile}\n`);
 
