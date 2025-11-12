@@ -2,51 +2,63 @@
 
 set -euo pipefail
 
-# Cleanup on exit (success or error)
-cleanup() {
-  echo "Cleaning up .env.yaml..."
-  rm -f .env.yaml
-}
-trap cleanup EXIT
-
 # Check for .env file
 if [ ! -f .env ]; then
-  echo ".env file not found"
+  echo "❌ .env file not found"
   exit 1
 fi
 
-# Check required env vars
-if ! grep -q "^service_name=" .env; then
-  echo "service_name is not set in the .env file"
+# Function to read env var from .env file
+get_env_var() {
+  local key=$1
+  local value=$(grep "^${key}=" .env | cut -d '=' -f2- | sed 's/^["'\'']//' | sed 's/["'\'']$//')
+  echo "$value"
+}
+
+# Read all required env vars from .env
+echo "📖 Reading environment variables from .env..."
+
+MIXPANEL_TOKEN=$(get_env_var "mixpanel_token")
+MIXPANEL_SECRET=$(get_env_var "mixpanel_secret")
+SLACK_BOT_TOKEN=$(get_env_var "slack_bot_token")
+SLACK_USER_TOKEN=$(get_env_var "slack_user_token")
+SERVICE_NAME=$(get_env_var "service_name")
+SLACK_PREFIX=$(get_env_var "slack_prefix")
+COMPANY_DOMAIN=$(get_env_var "company_domain")
+CHANNEL_GROUP_KEY=$(get_env_var "channel_group_key")
+GCS_PATH=$(get_env_var "gcs_path")
+
+# Validate required vars
+if [ -z "$SERVICE_NAME" ]; then
+  echo "❌ service_name is not set in .env"
   exit 1
 fi
 
-if ! grep -q "^mixpanel_token=" .env; then
-  echo "mixpanel_token is not set in the .env file"
+if [ -z "$MIXPANEL_TOKEN" ]; then
+  echo "❌ mixpanel_token is not set in .env"
   exit 1
 fi
 
-# Load service_name into environment
-export $(grep "^service_name=" .env | xargs)
+# Build substitutions string
+SUBSTITUTIONS="_SERVICE_NAME=${SERVICE_NAME}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_MIXPANEL_TOKEN=${MIXPANEL_TOKEN}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_MIXPANEL_SECRET=${MIXPANEL_SECRET}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_SLACK_USER_TOKEN=${SLACK_USER_TOKEN}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_SLACK_PREFIX=${SLACK_PREFIX}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_COMPANY_DOMAIN=${COMPANY_DOMAIN}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_CHANNEL_GROUP_KEY=${CHANNEL_GROUP_KEY}"
+SUBSTITUTIONS="${SUBSTITUTIONS},_GCS_PATH=${GCS_PATH}"
 
-# Convert .env to flat YAML format
-echo "Generating .env.yaml from .env file..."
-grep -v '^#' .env | grep -v '^\s*$' | while IFS='=' read -r key value; do
-  # Remove quotes if present and escape any remaining quotes
-  value=$(echo "$value" | sed 's/^["'\'']//' | sed 's/["'\'']$//' | sed 's/"/\\"/g')
-  echo "$key: \"$value\""
-done > .env.yaml
+echo "🚀 Deploying $SERVICE_NAME to Cloud Run via Cloud Build..."
+echo "📦 Region: us-central1"
 
-echo "Generated .env.yaml:"
-cat .env.yaml
-
-# Deploy using Cloud Build to Cloud Run
-echo "Deploying $service_name to Cloud Run using Cloud Build..."
+# Deploy using Cloud Build
 gcloud builds submit \
   --config cloudbuild.yaml \
-  --substitutions _SERVICE_NAME="$service_name" \
+  --substitutions "$SUBSTITUTIONS" \
   --region us-central1
 
+echo ""
 echo "✅ Cloud Run deployment complete!"
-echo "🌐 Your service should be available at:"
-echo "https://$service_name-$(gcloud config get-value project).a.run.app"
+echo "🌐 Service URL: https://$SERVICE_NAME-$(gcloud config get-value project 2>/dev/null).a.run.app"

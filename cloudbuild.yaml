@@ -16,29 +16,31 @@ steps:
       - '--min-instances=0'
       - '--concurrency=1'
       - '--port=8080'
-      # Non-sensitive environment variables
+      # Environment variables from .env (via substitutions)
       - '--set-env-vars=NODE_ENV=production'
       - '--set-env-vars=PORT=8080'
-      - '--set-env-vars=channel_group_key=channel_id'
-      - '--set-env-vars=slack_prefix=${_SLACK_PREFIX}'
       - '--set-env-vars=service_name=${_SERVICE_NAME}'
-      - '--set-env-vars=gcs_bucket=${_GCS_BUCKET}'
-      - '--set-env-vars=gcs_path=${_GCS_PATH}'
+      - '--set-env-vars=slack_prefix=${_SLACK_PREFIX}'
       - '--set-env-vars=company_domain=${_COMPANY_DOMAIN}'
-      # Sensitive values from Secret Manager
-      - '--set-secrets=slack_bot_token=slack_bot_token:latest'
-      - '--set-secrets=slack_user_token=slack_user_token:latest'
-      - '--set-secrets=mixpanel_token=mixpanel_token:latest'
-      - '--set-secrets=mixpanel_secret=mixpanel_secret:latest'
+      - '--set-env-vars=channel_group_key=${_CHANNEL_GROUP_KEY}'
+      - '--set-env-vars=gcs_path=${_GCS_PATH}'
+      - '--set-env-vars=slack_bot_token=${_SLACK_BOT_TOKEN}'
+      - '--set-env-vars=slack_user_token=${_SLACK_USER_TOKEN}'
+      - '--set-env-vars=mixpanel_token=${_MIXPANEL_TOKEN}'
+      - '--set-env-vars=mixpanel_secret=${_MIXPANEL_SECRET}'
 
-# Substitution variables
+# Substitution variables (defaults, override via deploy.sh)
 substitutions:
   _SERVICE_NAME: 'slack-mixpanel-analytics'
   _REGION: 'us-central1'
   _SLACK_PREFIX: 'https://mixpanel.slack.com'
-  _GCS_BUCKET: 'mixpanel-slack-analytics'
-  _GCS_PATH: 'gs://mixpanel-slack-analytics/data'
   _COMPANY_DOMAIN: 'mixpanel.com'
+  _CHANNEL_GROUP_KEY: 'channel_id'
+  _GCS_PATH: 'gs://mixpanel-slack-analytics/data'
+  _MIXPANEL_TOKEN: ''
+  _MIXPANEL_SECRET: ''
+  _SLACK_BOT_TOKEN: ''
+  _SLACK_USER_TOKEN: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY

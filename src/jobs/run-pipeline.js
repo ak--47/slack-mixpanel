@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { extractMemberAnalytics, extractChannelAnalytics } from './extract.js';
 import { loadMemberAnalytics, loadChannelAnalytics } from './load.js';
 import slackService from '../services/slack.js';
+import logger from '../utils/logger.js';
 import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
@@ -90,7 +91,7 @@ function getDateRange(params) {
 	// Determine default days based on environment
 	let DAYS;
 	if (NODE_ENV === "dev") DAYS = 1;
-	if (NODE_ENV === "production") DAYS = 2;
+	if (NODE_ENV === "production") DAYS = 5;
 	if (NODE_ENV === "backfill") DAYS = 365;
 	if (NODE_ENV === "test") DAYS = 5;
 	if (NODE_ENV === "cloud") DAYS = 14;
@@ -140,13 +141,13 @@ export async function runPipeline(options = {}) {
 		const loadOnly = options.loadOnly || false;
 		const cleanup = options.cleanup || false;
 
-		console.log(`\n${'='.repeat(80)}`);
-		console.log(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);
-		console.log(`[MAIN] Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
-		console.log(`[MAIN] Pipelines: ${pipelines.join(', ')}`);
-		console.log(`[MAIN] Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
-		console.log(`[MAIN] Cleanup: ${cleanup ? 'Enabled' : 'Disabled'}`);
-		console.log(`${'='.repeat(80)}\n`);
+		logger.info(`\n${'='.repeat(80)}`);
+		logger.info(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);
+		logger.info(`[MAIN] Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
+		logger.info(`[MAIN] Pipelines: ${pipelines.join(', ')}`);
+		logger.info(`[MAIN] Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
+		logger.info(`[MAIN] Cleanup: ${cleanup ? 'Enabled' : 'Disabled'}`);
+		logger.info(`${'='.repeat(80)}\n`);
 
 		// Cache channels and members for transforms (only needed for load stage)
 		let slackMembers = [];
@@ -155,11 +156,11 @@ export async function runPipeline(options = {}) {
 		if (!extractOnly) {
 			if (pipelines.includes('members')) {
 				slackMembers = await slackService.getUsers();
-				console.log(`[SLACK] Cached ${slackMembers.length} members`);
+				logger.verbose(`[SLACK] Cached ${slackMembers.length} members`);
 			}
 			if (pipelines.includes('channels')) {
 				slackChannels = await slackService.getChannels();
-				console.log(`[SLACK] Cached ${slackChannels.length} channels`);
+				logger.verbose(`[SLACK] Cached ${slackChannels.length} channels`);
 			}
 		}
 
@@ -168,9 +169,9 @@ export async function runPipeline(options = {}) {
 
 		// EXTRACT STAGE
 		if (!loadOnly) {
-			console.log(`\n${'='.repeat(80)}`);
-			console.log(`[MAIN] STAGE 1: EXTRACT`);
-			console.log(`${'='.repeat(80)}`);
+			logger.info(`\n${'='.repeat(80)}`);
+			logger.info(`[MAIN] STAGE 1: EXTRACT`);
+			logger.info(`${'='.repeat(80)}`);
 
 			if (pipelines.includes('members')) {
 				extractResults.members = await extractMemberAnalytics(
@@ -189,9 +190,9 @@ export async function runPipeline(options = {}) {
 
 		// LOAD STAGE
 		if (!extractOnly) {
-			console.log(`\n${'='.repeat(80)}`);
-			console.log(`[MAIN] STAGE 2: LOAD`);
-			console.log(`${'='.repeat(80)}`);
+			logger.info(`\n${'='.repeat(80)}`);
+			logger.info(`[MAIN] STAGE 2: LOAD`);
+			logger.info(`${'='.repeat(80)}`);
 
 			if (pipelines.includes('members')) {
 				const files = loadOnly
@@ -201,7 +202,7 @@ export async function runPipeline(options = {}) {
 				if (files.length > 0) {
 					loadResults.members = await loadMemberAnalytics(files, { slackMembers }, { cleanup });
 				} else {
-					console.log(`[LOAD] ⚠️  No member files to load`);
+					logger.warn(`[LOAD] ⚠️  No member files to load`);
 				}
 			}
 
@@ -213,16 +214,16 @@ export async function runPipeline(options = {}) {
 				if (files.length > 0) {
 					loadResults.channels = await loadChannelAnalytics(files, { slackChannels }, { cleanup });
 				} else {
-					console.log(`[LOAD] ⚠️  No channel files to load`);
+					logger.warn(`[LOAD] ⚠️  No channel files to load`);
 				}
 			}
 		}
 
 		const timing = t.end();
 
-		console.log(`\n${'='.repeat(80)}`);
-		console.log(`[MAIN] ✅ Pipeline Complete: ${timing}`);
-		console.log(`${'='.repeat(80)}\n`);
+		logger.info(`\n${'='.repeat(80)}`);
+		logger.info(`[MAIN] ✅ Pipeline Complete: ${timing}`);
+		logger.info(`${'='.repeat(80)}\n`);
 
 		return {
 			status: 'success',

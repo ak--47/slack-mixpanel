@@ -5,6 +5,7 @@
 
 import slackService from '../services/slack.js';
 import storage from '../services/storage.js';
+import logger from '../utils/logger.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import 'dotenv/config';
@@ -26,7 +27,7 @@ export async function extractMemberAnalytics(startDate, endDate) {
 	const daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
 	const totalDays = daysToFetch.length;
 
-	console.log(`\n[EXTRACT] Member analytics: ${totalDays} days (${startDate} to ${endDate})`);
+	logger.info(`\n[EXTRACT] Member analytics: ${totalDays} days (${startDate} to ${endDate})`);
 
 	let extracted = 0;
 	let skipped = 0;
@@ -40,7 +41,7 @@ export async function extractMemberAnalytics(startDate, endDate) {
 
 		// Skip if already exists
 		if (await storage.fileExists(filePath)) {
-			console.log(`[EXTRACT] ${progress} ⏭️  ${date} (cached)`);
+			logger.verbose(`[EXTRACT] ${progress} ⏭️  ${date} (cached)`);
 			skipped++;
 			files.push(storage.getFullPath(filePath));
 			continue;
@@ -59,22 +60,22 @@ export async function extractMemberAnalytics(startDate, endDate) {
 				if (filteredData.length > 0) {
 					// Write to file
 					const writtenPath = await storage.writeJSONLGz(filePath, filteredData);
-					console.log(`[EXTRACT] ${progress} ✅ ${date}: ${filteredData.length}/${data.length} records (@${company_domain})`);
+					logger.verbose(`[EXTRACT] ${progress} ✅ ${date}: ${filteredData.length}/${data.length} records (@${company_domain})`);
 					extracted++;
 					files.push(writtenPath);
 				} else {
-					console.log(`[EXTRACT] ${progress} ⚠️  ${date}: No @${company_domain} users`);
+					logger.verbose(`[EXTRACT] ${progress} ⚠️  ${date}: No @${company_domain} users`);
 				}
 			} else {
-				console.log(`[EXTRACT] ${progress} ⚠️  ${date}: No data`);
+				logger.verbose(`[EXTRACT] ${progress} ⚠️  ${date}: No data`);
 			}
 
 		} catch (error) {
-			console.error(`[EXTRACT] ${progress} ❌ ${date}: ${error.message}`);
+			logger.error(`[EXTRACT] ${progress} ❌ ${date}: ${error.message}`);
 		}
 	}
 
-	console.log(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
+	logger.info(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
 
 	return { extracted, skipped, files };
 }
@@ -92,7 +93,7 @@ export async function extractChannelAnalytics(startDate, endDate) {
 	const daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
 	const totalDays = daysToFetch.length;
 
-	console.log(`\n[EXTRACT] Channel analytics: ${totalDays} days (${startDate} to ${endDate})`);
+	logger.info(`\n[EXTRACT] Channel analytics: ${totalDays} days (${startDate} to ${endDate})`);
 
 	let extracted = 0;
 	let skipped = 0;
@@ -106,7 +107,7 @@ export async function extractChannelAnalytics(startDate, endDate) {
 
 		// Skip if already exists
 		if (await storage.fileExists(filePath)) {
-			console.log(`[EXTRACT] ${progress} ⏭️  ${date} (cached)`);
+			logger.verbose(`[EXTRACT] ${progress} ⏭️  ${date} (cached)`);
 			skipped++;
 			files.push(storage.getFullPath(filePath));
 			continue;
@@ -119,19 +120,19 @@ export async function extractChannelAnalytics(startDate, endDate) {
 			if (data && data.length > 0) {
 				// Write to file
 				const writtenPath = await storage.writeJSONLGz(filePath, data);
-				console.log(`[EXTRACT] ${progress} ✅ ${date}: ${data.length} records`);
+				logger.verbose(`[EXTRACT] ${progress} ✅ ${date}: ${data.length} records`);
 				extracted++;
 				files.push(writtenPath);
 			} else {
-				console.log(`[EXTRACT] ${progress} ⚠️  ${date}: No data`);
+				logger.verbose(`[EXTRACT] ${progress} ⚠️  ${date}: No data`);
 			}
 
 		} catch (error) {
-			console.error(`[EXTRACT] ${progress} ❌ ${date}: ${error.message}`);
+			logger.error(`[EXTRACT] ${progress} ❌ ${date}: ${error.message}`);
 		}
 	}
 
-	console.log(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
+	logger.info(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
 
 	return { extracted, skipped, files };
 }

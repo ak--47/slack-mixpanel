@@ -124,7 +124,7 @@ app.get('/', (req, res) => {
 			all: "POST /mixpanel-all - Process both members and channels pipelines"
 		},
 		parameters: {
-			days: "number - Number of days to process (default: 2)",
+			days: "number - Number of days to process (default: 5)",
 			start_date: "string - Start date in YYYY-MM-DD format",
 			end_date: "string - End date in YYYY-MM-DD format",
 			backfill: "boolean - Run in backfill mode (~13 months)",
