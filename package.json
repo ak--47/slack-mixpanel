@@ -17,7 +17,7 @@
     "test:coverage": "vitest --coverage",
     "test:ui": "vitest --ui",
     "test:legacy": "node test.js",
-    "prune": "rm -rf tmp/* || true",
+    "prune": "rm -rf tmp/* logs/* || true",
     "scripts:chmod": "chmod +x scripts/*.sh"
   },
   "dependencies": {

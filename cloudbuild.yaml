@@ -1,11 +1,19 @@
 steps:
-  # Deploy to Cloud Run using source-based deployment
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:latest', '.']
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:latest']
+
+  # Deploy to Cloud Run
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'run'
       - 'deploy'
       - '${_SERVICE_NAME}'
-      - '--source=.'
+      - '--image=gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:latest'
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--allow-unauthenticated'
@@ -16,9 +24,9 @@ steps:
       - '--min-instances=0'
       - '--concurrency=1'
       - '--port=8080'
+      - '--no-use-http2'
       # Environment variables from .env (via substitutions)
       - '--set-env-vars=NODE_ENV=production'
-      - '--set-env-vars=PORT=8080'
       - '--set-env-vars=service_name=${_SERVICE_NAME}'
       - '--set-env-vars=slack_prefix=${_SLACK_PREFIX}'
       - '--set-env-vars=company_domain=${_COMPANY_DOMAIN}'
@@ -33,6 +41,7 @@ steps:
 substitutions:
   _SERVICE_NAME: 'slack-mixpanel-analytics'
   _REGION: 'us-central1'
+  _PROJECT_ID: 'mixpanel-gtm-training'
   _SLACK_PREFIX: 'https://mixpanel.slack.com'
   _COMPANY_DOMAIN: 'mixpanel.com'
   _CHANNEL_GROUP_KEY: 'channel_id'
@@ -41,6 +50,10 @@ substitutions:
   _MIXPANEL_SECRET: ''
   _SLACK_BOT_TOKEN: ''
   _SLACK_USER_TOKEN: ''
+
+# Container image will be stored in Container Registry
+images:
+  - 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
