@@ -63,5 +63,5 @@ dist/
 build/
 
 # Docker files (not needed with Cloud Build)
-Dockerfile*
+# Dockerfile*
 .dockerignore
