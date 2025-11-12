@@ -10,6 +10,7 @@
     "build": "echo 'No build step required'",
     "deploy": "./deploy.sh",
     "lint": "echo 'Linting not configured'",
+    "typecheck": "npx tsc --noEmit",
     "test": "vitest",
     "test:unit": "vitest test/unit",
     "test:integration": "vitest test/integration",
@@ -42,6 +43,7 @@
     "@vitest/ui": "^3.2.4",
     "nodemon": "^3.1.10",
     "supertest": "^7.1.4",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }
 }

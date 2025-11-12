@@ -142,13 +142,13 @@ export async function runPipeline(options = {}) {
 		// In production, always cleanup to avoid keeping cache; otherwise respect option
 		const cleanup = NODE_ENV === 'production' ? true : (options.cleanup || false);
 
-		logger.info(`\n${'='.repeat(80)}`);
-		logger.info(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);
-		logger.info(`[MAIN] Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
-		logger.info(`[MAIN] Pipelines: ${pipelines.join(', ')}`);
-		logger.info(`[MAIN] Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
-		logger.info(`[MAIN] Cleanup: ${cleanup ? 'Enabled' : 'Disabled'}`);
-		logger.info(`${'='.repeat(80)}\n`);
+		logger.verbose(`\n${'='.repeat(80)}`);
+		logger.verbose(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);
+		logger.verbose(`[MAIN] Date Range: ${dateRange.simpleStart} to ${dateRange.simpleEnd} (${dateRange.days} days)`);
+		logger.verbose(`[MAIN] Pipelines: ${pipelines.join(', ')}`);
+		logger.verbose(`[MAIN] Mode: ${extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load'}`);
+		logger.verbose(`[MAIN] Cleanup: ${cleanup ? 'Enabled' : 'Disabled'}`);
+		logger.verbose(`${'='.repeat(80)}\n`);
 
 		// Cache channels and members for transforms (only needed for load stage)
 		let slackMembers = [];
@@ -170,9 +170,9 @@ export async function runPipeline(options = {}) {
 
 		// EXTRACT STAGE
 		if (!loadOnly) {
-			logger.info(`\n${'='.repeat(80)}`);
-			logger.info(`[MAIN] STAGE 1: EXTRACT`);
-			logger.info(`${'='.repeat(80)}`);
+			logger.verbose(`\n${'='.repeat(80)}`);
+			logger.verbose(`[MAIN] STAGE 1: EXTRACT`);
+			logger.verbose(`${'='.repeat(80)}`);
 
 			if (pipelines.includes('members')) {
 				extractResults.members = await extractMemberAnalytics(
@@ -191,9 +191,9 @@ export async function runPipeline(options = {}) {
 
 		// LOAD STAGE
 		if (!extractOnly) {
-			logger.info(`\n${'='.repeat(80)}`);
-			logger.info(`[MAIN] STAGE 2: LOAD`);
-			logger.info(`${'='.repeat(80)}`);
+			logger.verbose(`\n${'='.repeat(80)}`);
+			logger.verbose(`[MAIN] STAGE 2: LOAD`);
+			logger.verbose(`${'='.repeat(80)}`);
 
 			if (pipelines.includes('members')) {
 				const files = loadOnly
@@ -222,21 +222,29 @@ export async function runPipeline(options = {}) {
 
 		const timing = t.end();
 
-		logger.info(`\n${'='.repeat(80)}`);
-		logger.info(`[MAIN] ✅ Pipeline Complete: ${timing}`);
-		logger.info(`${'='.repeat(80)}\n`);
-
-		return {
+		const result = {
 			status: 'success',
 			timing: t.report(false),
 			params: {
 				start_date: dateRange.start,
 				end_date: dateRange.end,
-				days: dateRange.days
+				days: dateRange.days,
+				pipelines: pipelines.join(', '),
+				mode: extractOnly ? 'Extract Only' : loadOnly ? 'Load Only' : 'Extract + Load',
+				cleanup
 			},
 			extract: extractResults,
 			load: loadResults
 		};
+
+		// Log completion with structured data
+		logger.summary(`Pipeline Complete: ${timing}`, result);
+
+		logger.verbose(`\n${'='.repeat(80)}`);
+		logger.verbose(`[MAIN] ✅ Pipeline Complete: ${timing}`);
+		logger.verbose(`${'='.repeat(80)}\n`);
+
+		return result;
 
 	} catch (error) {
 		console.error('PIPELINE ERROR:', error);

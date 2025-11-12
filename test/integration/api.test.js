@@ -100,9 +100,9 @@ function createApp() {
     t.start();
 
     try {
-      sLog('START JOB: slack-members');
-
       const params = parseParameters(req);
+
+      sLog('START JOB: slack-members', { params });
 
       // Run file-based pipeline
       const result = await runPipeline({
@@ -110,7 +110,7 @@ function createApp() {
         pipelines: ['members']
       });
 
-      sLog(`FINISH JOB: slack-members ... ${t.end()}`);
+      sLog(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
 
       res.status(200).json({
         status: 'success',
@@ -140,9 +140,9 @@ function createApp() {
     t.start();
 
     try {
-      sLog('START JOB: slack-channels');
-
       const params = parseParameters(req);
+
+      sLog('START JOB: slack-channels', { params });
 
       // Run file-based pipeline
       const result = await runPipeline({
@@ -150,7 +150,7 @@ function createApp() {
         pipelines: ['channels']
       });
 
-      sLog(`FINISH JOB: slack-channels ... ${t.end()}`);
+      sLog(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
 
       res.status(200).json({
         status: 'success',
@@ -180,9 +180,9 @@ function createApp() {
     t.start();
 
     try {
-      sLog('START JOB: slack-all');
-
       const params = parseParameters(req);
+
+      sLog('START JOB: slack-all', { params });
 
       // Run file-based pipeline
       const result = await runPipeline({
@@ -190,7 +190,7 @@ function createApp() {
         pipelines: ['members', 'channels']
       });
 
-      sLog(`FINISH JOB: slack-all ... ${t.end()}`);
+      sLog(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
 
       res.status(200).json({
         status: 'success',

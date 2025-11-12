@@ -150,9 +150,9 @@ app.post('/mixpanel-members', async (req, res) => {
 	t.start();
 
 	try {
-		sLog('START JOB: slack-members');
-
 		const params = parseParameters(req);
+
+		sLog('START JOB: slack-members', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -160,7 +160,7 @@ app.post('/mixpanel-members', async (req, res) => {
 			pipelines: ['members']
 		});
 
-		sLog(`FINISH JOB: slack-members ... ${t.end()}`);
+		sLog(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -190,9 +190,9 @@ app.post('/mixpanel-channels', async (req, res) => {
 	t.start();
 
 	try {
-		sLog('START JOB: slack-channels');
-
 		const params = parseParameters(req);
+
+		sLog('START JOB: slack-channels', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -200,7 +200,7 @@ app.post('/mixpanel-channels', async (req, res) => {
 			pipelines: ['channels']
 		});
 
-		sLog(`FINISH JOB: slack-channels ... ${t.end()}`);
+		sLog(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -230,9 +230,9 @@ app.post('/mixpanel-all', async (req, res) => {
 	t.start();
 
 	try {
-		sLog('START JOB: slack-all');
-
 		const params = parseParameters(req);
+
+		sLog('START JOB: slack-all', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -240,7 +240,7 @@ app.post('/mixpanel-all', async (req, res) => {
 			pipelines: ['members', 'channels']
 		});
 
-		sLog(`FINISH JOB: slack-all ... ${t.end()}`);
+		sLog(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -267,5 +267,5 @@ app.post('/mixpanel-all', async (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-	sLog(`Slack-Mixpanel pipeline server running on port ${PORT} in ${NODE_ENV} mode`);
+	sLog(`Slack-Mixpanel pipeline server running on port ${PORT} in ${NODE_ENV} mode`, {});
 });

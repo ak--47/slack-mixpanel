@@ -206,13 +206,14 @@ describe('Pipeline Integration Tests', () => {
       };
 
       const event = transformMemberEvent(mockRecord, context);
+	  const { properties} = event
 
       expect(event).toHaveProperty('event');
-      expect(event).toHaveProperty('distinct_id');
-      expect(event).toHaveProperty('time');
+      expect(properties).toHaveProperty('$user_id');
+      expect(properties).toHaveProperty('time');
       expect(event).toHaveProperty('properties');
-      expect(event.distinct_id).toBe('test@mixpanel.com');
-      expect(event.event).toBe('slack activity');
+      expect(properties.$user_id).toBe('U123');
+      expect(event.event).toBe('daily user activity');
     });
 
     it('should transform member profiles correctly', () => {
@@ -235,10 +236,9 @@ describe('Pipeline Integration Tests', () => {
       const profile = transformMemberProfile(mockRecord, context);
 
       expect(profile).toHaveProperty('$distinct_id');
-      expect(profile).toHaveProperty('$email');
       expect(profile).toHaveProperty('$set');
-      expect(profile.$distinct_id).toBe('test@mixpanel.com');
-      expect(profile.$email).toBe('test@mixpanel.com');
+      expect(profile.$distinct_id).toBe('U123');
+      expect(profile.$set.$email).toBe('test@mixpanel.com');
       expect(profile.$set.slack_id).toBe('U123');
     });
 
@@ -265,10 +265,10 @@ describe('Pipeline Integration Tests', () => {
       const event = transformChannelEvent(mockRecord, context);
 
       expect(event).toHaveProperty('event');
-      expect(event).toHaveProperty('distinct_id');
-      expect(event).toHaveProperty('time');
-      expect(event.distinct_id).toBe('C123');
-      expect(event.event).toBe('slack channel activity');
+      expect(event).toHaveProperty('properties');
+      expect(event.properties.distinct_id).toBe('C123');
+      expect(event.properties).toHaveProperty('time');
+      expect(event.event).toBe('daily channel activity');
       expect(event.properties.name).toBe('#general');
     });
 
@@ -297,7 +297,7 @@ describe('Pipeline Integration Tests', () => {
       expect(profile).toHaveProperty('$set');
       expect(profile.$group_key).toBe('channel_id');
       expect(profile.$group_id).toBe('C123');
-      expect(profile.$set.name).toBe('#general');
+      expect(profile.$set.$name).toBe('#general');
     });
   });
 

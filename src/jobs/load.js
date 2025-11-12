@@ -55,9 +55,9 @@ async function uploadBatch(files, options) {
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
 		try {
 			if (attempt === 1) {
-				logger.info(`[MIXPANEL] Uploading ${typeLabel}: ${fileCount} files...`);
+				logger.verbose(`[MIXPANEL] Uploading ${typeLabel}: ${fileCount} files...`);
 			} else {
-				logger.info(`[MIXPANEL] Retry ${attempt}/${maxRetries}: ${typeLabel}`);
+				logger.verbose(`[MIXPANEL] Retry ${attempt}/${maxRetries}: ${typeLabel}`);
 			}
 
 			// Credentials for mixpanel-import
@@ -92,7 +92,7 @@ async function uploadBatch(files, options) {
 			// Pass array of file paths to mixpanel-import
 			const result = await mixpanelImport(creds, files, importOptions);
 
-			logger.info(`[MIXPANEL] ✅ ${typeLabel}: ${fileCount} files uploaded`);
+			logger.verbose(`[MIXPANEL] ✅ ${typeLabel}: ${fileCount} files uploaded`);
 			return { success: true, files, result, attempts: attempt };
 
 		} catch (error) {
@@ -120,14 +120,14 @@ async function uploadBatch(files, options) {
  * @param {Object} context - Context with slackMembers cache and options
  * @param {Object} options - Load options
  * @param {boolean} [options.cleanup=false] - Delete files after successful upload
- * @returns {Promise<{uploaded: number, failed: number, results: Array}>}
+ * @returns {Promise<{uploaded: number, failed: number, results: Object}>}
  */
 export async function loadMemberAnalytics(files, context, options = {}) {
 	const { slackMembers } = context;
 	const { cleanup = false } = options;
 	const totalFiles = files.length;
 
-	logger.info(`\n[LOAD] Member analytics: ${totalFiles} files to Mixpanel`);
+	logger.verbose(`\n[LOAD] Member analytics: ${totalFiles} files to Mixpanel`);
 
 	const heavyObjects = {
 		slackMembers,
@@ -177,7 +177,7 @@ export async function loadMemberAnalytics(files, context, options = {}) {
 
 	// Cleanup files after successful upload if requested
 	if (cleanup && eventsResult.success && profilesResult.success) {
-		logger.info(`[LOAD] → Cleanup: Deleting ${totalFiles} files...`);
+		logger.verbose(`[LOAD] → Cleanup: Deleting ${totalFiles} files...`);
 		let deleted = 0;
 		let deleteFailed = 0;
 
@@ -192,13 +192,15 @@ export async function loadMemberAnalytics(files, context, options = {}) {
 			}
 		}
 
-		logger.info(`[LOAD] → Cleanup complete: ${deleted} deleted, ${deleteFailed} failed`);
+		logger.verbose(`[LOAD] → Cleanup complete: ${deleted} deleted, ${deleteFailed} failed`);
 	}
 
 	const uploaded = (eventsResult.success ? totalFiles : 0) + (profilesResult.success ? totalFiles : 0);
 	const failed = (eventsResult.success ? 0 : totalFiles) + (profilesResult.success ? 0 : totalFiles);
 
-	logger.info(`[LOAD] ✅ Members complete: ${uploaded} uploaded, ${failed} failed`);
+	const result = { uploaded, failed, files: totalFiles, results };
+	logger.summary('[LOAD] Members Complete', result);
+	logger.verbose(`[LOAD] ✅ Members complete: ${uploaded} uploaded, ${failed} failed`);
 
 	return {
 		uploaded,
@@ -213,14 +215,14 @@ export async function loadMemberAnalytics(files, context, options = {}) {
  * @param {Object} context - Context with slackChannels cache
  * @param {Object} options - Load options
  * @param {boolean} [options.cleanup=false] - Delete files after successful upload
- * @returns {Promise<{uploaded: number, failed: number, results: Array}>}
+ * @returns {Promise<{uploaded: number, failed: number, results: Object}>}
  */
 export async function loadChannelAnalytics(files, context, options = {}) {
 	const { slackChannels } = context;
 	const { cleanup = false } = options;
 	const totalFiles = files.length;
 
-	logger.info(`\n[LOAD] Channel analytics: ${totalFiles} files to Mixpanel`);
+	logger.verbose(`\n[LOAD] Channel analytics: ${totalFiles} files to Mixpanel`);
 
 	const heavyObjects = {
 		slackChannels,
@@ -272,7 +274,7 @@ export async function loadChannelAnalytics(files, context, options = {}) {
 
 	// Cleanup files after successful upload if requested
 	if (cleanup && eventsResult.success && profilesResult.success) {
-		logger.info(`[LOAD] → Cleanup: Deleting ${totalFiles} files...`);
+		logger.verbose(`[LOAD] → Cleanup: Deleting ${totalFiles} files...`);
 		let deleted = 0;
 		let deleteFailed = 0;
 
@@ -287,13 +289,15 @@ export async function loadChannelAnalytics(files, context, options = {}) {
 			}
 		}
 
-		logger.info(`[LOAD] → Cleanup complete: ${deleted} deleted, ${deleteFailed} failed`);
+		logger.verbose(`[LOAD] → Cleanup complete: ${deleted} deleted, ${deleteFailed} failed`);
 	}
 
 	const uploaded = (eventsResult.success ? totalFiles : 0) + (profilesResult.success ? totalFiles : 0);
 	const failed = (eventsResult.success ? 0 : totalFiles) + (profilesResult.success ? 0 : totalFiles);
 
-	logger.info(`[LOAD] ✅ Channels complete: ${uploaded} uploaded, ${failed} failed`);
+	const result = { uploaded, failed, files: totalFiles, results };
+	logger.summary('[LOAD] Channels Complete', result);
+	logger.verbose(`[LOAD] ✅ Channels complete: ${uploaded} uploaded, ${failed} failed`);
 
 	return {
 		uploaded,

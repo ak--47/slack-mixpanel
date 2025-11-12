@@ -27,7 +27,7 @@ export async function extractMemberAnalytics(startDate, endDate) {
 	const daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
 	const totalDays = daysToFetch.length;
 
-	logger.info(`\n[EXTRACT] Member analytics: ${totalDays} days (${startDate} to ${endDate})`);
+	logger.verbose(`\n[EXTRACT] Member analytics: ${totalDays} days (${startDate} to ${endDate})`);
 
 	let extracted = 0;
 	let skipped = 0;
@@ -75,7 +75,9 @@ export async function extractMemberAnalytics(startDate, endDate) {
 		}
 	}
 
-	logger.info(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
+	const result = { extracted, skipped, files: files.length, dateRange: `${startDate} to ${endDate}` };
+	logger.summary('[EXTRACT] Members Complete', result);
+	logger.verbose(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
 
 	return { extracted, skipped, files };
 }
@@ -93,7 +95,7 @@ export async function extractChannelAnalytics(startDate, endDate) {
 	const daysToFetch = Array.from({ length: delta + 1 }, (_, i) => start.add(i, 'd').format('YYYY-MM-DD'));
 	const totalDays = daysToFetch.length;
 
-	logger.info(`\n[EXTRACT] Channel analytics: ${totalDays} days (${startDate} to ${endDate})`);
+	logger.verbose(`\n[EXTRACT] Channel analytics: ${totalDays} days (${startDate} to ${endDate})`);
 
 	let extracted = 0;
 	let skipped = 0;
@@ -132,7 +134,9 @@ export async function extractChannelAnalytics(startDate, endDate) {
 		}
 	}
 
-	logger.info(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
+	const result = { extracted, skipped, files: files.length, dateRange: `${startDate} to ${endDate}` };
+	logger.summary('[EXTRACT] Channels Complete', result);
+	logger.verbose(`[EXTRACT] ✅ Complete: ${extracted} extracted, ${skipped} cached`);
 
 	return { extracted, skipped, files };
 }

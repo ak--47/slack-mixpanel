@@ -31,6 +31,7 @@ function colorize(color, ...args) {
  * - error: Always logs (errors) - red in dev
  * - verbose: Only logs in non-production (detailed progress) - dim in dev
  * - warn: Always logs (warnings) - yellow in dev
+ * - summary: Structured data logging (JSON in production, formatted in dev)
  */
 export const logger = {
 	/**
@@ -61,6 +62,22 @@ export const logger = {
 	 */
 	warn: (...args) => {
 		console.warn(colorize(colors.yellow, ...args));
+	},
+
+	/**
+	 * Log structured data (JSON in production for parsing, formatted in dev for readability)
+	 */
+	summary: (message, data = {}) => {
+		if (IS_PRODUCTION) {
+			// Production: Single-line JSON for log aggregation/parsing
+			console.log(JSON.stringify({ message, ...data, timestamp: new Date().toISOString() }));
+		} else {
+			// Dev: Human-readable format with colors
+			console.log(colorize(colors.cyan, `\n${message}`));
+			if (Object.keys(data).length > 0) {
+				console.log(colorize(colors.dim, JSON.stringify(data, null, 2)));
+			}
+		}
 	}
 };
 
