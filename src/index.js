@@ -10,7 +10,7 @@ dayjs.extend(utc);
 
 const { sLog, timer } = akTools;
 const {
-	NODE_ENV = "production",
+	NODE_ENV = "unknown",
 	PORT = 8080
 } = process.env;
 

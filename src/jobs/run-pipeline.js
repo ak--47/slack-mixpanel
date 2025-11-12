@@ -19,7 +19,7 @@ dayjs.extend(utc);
 const { sLog, timer } = akTools;
 
 const {
-	NODE_ENV = "production"
+	NODE_ENV = "unknown"
 } = process.env;
 
 /**
@@ -139,7 +139,8 @@ export async function runPipeline(options = {}) {
 		const pipelines = options.pipelines || ['members', 'channels'];
 		const extractOnly = options.extractOnly || false;
 		const loadOnly = options.loadOnly || false;
-		const cleanup = options.cleanup || false;
+		// In production, always cleanup to avoid keeping cache; otherwise respect option
+		const cleanup = NODE_ENV === 'production' ? true : (options.cleanup || false);
 
 		logger.info(`\n${'='.repeat(80)}`);
 		logger.info(`[MAIN] Pipeline: ${params.env || NODE_ENV} mode`);

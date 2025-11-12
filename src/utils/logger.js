@@ -3,7 +3,7 @@
  * @module Logger
  */
 
-const { NODE_ENV = "production" } = process.env;
+const { NODE_ENV = "unknown" } = process.env;
 const IS_PRODUCTION = NODE_ENV === "production";
 
 // ANSI color codes (no library needed!)
