@@ -11,11 +11,11 @@ import { pipeline } from 'stream/promises';
 import { Storage as GCSStorage } from '@google-cloud/storage';
 import 'dotenv/config';
 
-const { gcs_path, gcs_project } = process.env;
+const { gcs_path, gcs_project = 'mixpanel-gtm-training' } = process.env;
 
-// Initialize GCS client if configured
+// Initialize GCS client if GCS path is configured
 let gcsClient = null;
-if (gcs_project) {
+if (gcs_path) {
 	gcsClient = new GCSStorage({ projectId: gcs_project });
 }
 

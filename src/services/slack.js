@@ -127,6 +127,9 @@ async function testAuth(clientType = 'bot') {
  * const data = await analytics('2024-01-01', '2024-01-07', 'member', false);
  */
 async function analytics(startDate, endDate, type = 'member', streamResult = true) {
+	// Ensure Slack is initialized before making API calls
+	await ensureSlackInitialized();
+
 	if (!startDate) startDate = dayjs.utc().subtract(3, 'd').format('YYYY-MM-DD');
 	if (!endDate) endDate = dayjs.utc().subtract(2, 'd').format('YYYY-MM-DD');
 
@@ -221,8 +224,11 @@ async function analytics(startDate, endDate, type = 'member', streamResult = tru
  * console.log(`Found ${channels.length} active channels`);
  */
 async function getChannels() {
+	// Ensure Slack is initialized before making API calls
+	await ensureSlackInitialized();
+
 	if (cache.channels) return cache.channels;
-	
+
 	const channels = [];
 	const options = { exclude_archived: true, limit: 1000 };
 	const firstResponse = await slackUserClient.conversations.list(options);
@@ -249,6 +255,9 @@ async function getChannels() {
  * console.log(`Found ${activeUsers.length} active users`);
  */
 async function getUsers() {
+	// Ensure Slack is initialized before making API calls
+	await ensureSlackInitialized();
+
 	if (cache.users) return cache.users;
 
 	const users = [];
@@ -745,8 +754,28 @@ async function getChannelMessageAnalytics(channelId, options = {}) {
 	return analytics;
 }
 
-// Initialize on module load
-const { ready, userAuth, botAuth } = await initializeSlack();
+// Initialize Slack tokens (non-blocking for faster server startup)
+let slackInitialized = false;
+let slackInitPromise = null;
+
+// Start initialization in background (don't block module load)
+function ensureSlackInitialized() {
+	if (!slackInitPromise) {
+		slackInitPromise = initializeSlack()
+			.then(result => {
+				slackInitialized = true;
+				return result;
+			})
+			.catch(err => {
+				console.error('SLACK: Initialization failed:', err.message);
+				throw err;
+			});
+	}
+	return slackInitPromise;
+}
+
+// Start initialization immediately but don't await it (non-blocking)
+ensureSlackInitialized();
 
 /**
  * @typedef {Object} SlackService
@@ -771,9 +800,7 @@ const slackService = {
 	description: 'Service for interacting with Slack API',
 	slackBotClient,
 	slackUserClient,
-	userAuth,
-	botAuth,
-	ready,
+	ensureSlackInitialized,
 	analytics,
 	getChannels,
 	getUsers,
@@ -791,9 +818,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const { NODE_ENV = "unknown" } = process.env;
 	
 	try {
-		// Test authentication
-		console.log('✅ Authentication successful:', { userAuth, botAuth });
-		
+		// Ensure Slack is initialized
+		await ensureSlackInitialized();
+		console.log('✅ Slack initialized successfully');
+
 		// Test channel fetching
 		const channels = await getChannels();
 		console.log(`📺 Found ${channels.length} channels`);

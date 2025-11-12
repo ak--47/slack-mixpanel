@@ -23,11 +23,10 @@ export function transformMemberEvent(record, context) {
 	const memberDetails = slackMembers.find((m) => m.id === record.user_id);
 
 	const event = {
-		event: 'daily user activity',
-		// distinct_id: record.email_address.toLowerCase(),		
+		event: 'daily user activity',		
 		properties: {
 			...record,
-			$user_id: record.user_id,
+			$user_id: record.user_id, // this is the primary UUID
 			time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 			email: record.email_address,
 			team_id: record.team_id,
@@ -61,7 +60,7 @@ export function transformMemberProfile(record, context) {
 	const memberDetails = slackMembers.find((m) => m.id === record.user_id);
 
 	const profile = {
-		$distinct_id: record.email_address.toLowerCase(),		
+		$distinct_id: record.user_id, // Use Slack user ID as distinct_id (must match events)
 		$set: {
 			slack_id: record.user_id,
 			$email: record.email_address,

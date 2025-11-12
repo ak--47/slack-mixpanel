@@ -74,13 +74,9 @@ async function uploadBatch(files, options) {
 				compress: true,
 				fixData: true,
 				removeNulls: true,
-				abridged: true,
+				abridged: NODE_ENV === 'dev' ? false : true, // Full details in dev mode
 				fixTime: true,
-				// responseHandler: (res) => {
-				// 	if (type === "group") {
-				// 		debugger;
-				// 	}
-				// },
+				...(NODE_ENV === 'dev' && { keepBadRecords: true }), // Keep bad records in dev mode
 				...(transformFunc && { transformFunc }),
 				...(heavyObjects && { heavyObjects }),
 				...(groupKey && { groupKey })
@@ -176,6 +172,9 @@ export async function loadMemberAnalytics(files, context, options = {}) {
 	results.profiles.error = profilesResult.error || null;
 	results.profiles.count = totalFiles;
 
+	// Debug inspection point in dev mode
+	if (NODE_ENV === 'dev') debugger;
+
 	// Cleanup files after successful upload if requested
 	if (cleanup && eventsResult.success && profilesResult.success) {
 		logger.info(`[LOAD] → Cleanup: Deleting ${totalFiles} files...`);
@@ -267,6 +266,9 @@ export async function loadChannelAnalytics(files, context, options = {}) {
 	results.profiles.success = profilesResult.success;
 	results.profiles.error = profilesResult.error || null;
 	results.profiles.count = totalFiles;
+
+	// Debug inspection point in dev mode
+	if (NODE_ENV === 'dev') debugger;
 
 	// Cleanup files after successful upload if requested
 	if (cleanup && eventsResult.success && profilesResult.success) {
