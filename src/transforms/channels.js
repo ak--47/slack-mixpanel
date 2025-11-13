@@ -82,6 +82,7 @@ export function transformChannelProfile(record, context) {
 	// Add channel details if available
 	if (channelDetails) {
 		profile.$set.$name = `#${channelDetails.name}`;
+		profile.$set.channel_name = `${channelDetails.name}`;
 		profile.$set['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
 		profile.$set.$email = `${slack_prefix}/${record.channel_id}`;
 		profile.$set.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
