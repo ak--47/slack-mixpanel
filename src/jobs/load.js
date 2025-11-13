@@ -74,9 +74,9 @@ async function uploadBatch(files, options) {
 				compress: true,
 				fixData: true,
 				removeNulls: true,
-				abridged: NODE_ENV === 'dev' ? false : true, // Full details in dev mode
+				abridged: false, // Always get full details for structured logging
 				fixTime: true,
-				...(NODE_ENV === 'dev' && { keepBadRecords: true }), // Keep bad records in dev mode
+				keepBadRecords: true, // Always keep bad records for debugging
 				...(transformFunc && { transformFunc }),
 				...(heavyObjects && { heavyObjects }),
 				...(groupKey && { groupKey })
@@ -150,6 +150,7 @@ export async function loadMemberAnalytics(files, context, options = {}) {
 	results.events.success = eventsResult.success;
 	results.events.error = eventsResult.error || null;
 	results.events.count = totalFiles;
+	results.events.result = eventsResult.result; // Full mixpanel-import response
 
 	if (!eventsResult.success) {
 		logger.error(`[LOAD] ⚠️  Events upload failed, skipping profiles`);
@@ -171,6 +172,7 @@ export async function loadMemberAnalytics(files, context, options = {}) {
 	results.profiles.success = profilesResult.success;
 	results.profiles.error = profilesResult.error || null;
 	results.profiles.count = totalFiles;
+	results.profiles.result = profilesResult.result; // Full mixpanel-import response
 
 	// Debug inspection point in dev mode
 	if (NODE_ENV === 'dev') debugger;
@@ -246,6 +248,7 @@ export async function loadChannelAnalytics(files, context, options = {}) {
 	results.events.success = eventsResult.success;
 	results.events.error = eventsResult.error || null;
 	results.events.count = totalFiles;
+	results.events.result = eventsResult.result; // Full mixpanel-import response
 
 	if (!eventsResult.success) {
 		logger.error(`[LOAD] ⚠️  Events upload failed, skipping group profiles`);
@@ -268,6 +271,7 @@ export async function loadChannelAnalytics(files, context, options = {}) {
 	results.profiles.success = profilesResult.success;
 	results.profiles.error = profilesResult.error || null;
 	results.profiles.count = totalFiles;
+	results.profiles.result = profilesResult.result; // Full mixpanel-import response
 
 	// Debug inspection point in dev mode
 	if (NODE_ENV === 'dev') debugger;

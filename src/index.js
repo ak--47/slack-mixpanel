@@ -266,6 +266,24 @@ app.post('/mixpanel-all', async (req, res) => {
 
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
 	sLog(`Slack-Mixpanel pipeline server running on port ${PORT} in ${NODE_ENV} mode`, {});
 });
+
+// Graceful shutdown handler
+function gracefulShutdown(signal) {
+	sLog(`Received ${signal}, closing server gracefully...`, {});
+	server.close(() => {
+		sLog('Server closed', {});
+		process.exit(0);
+	});
+
+	// Force exit after 10 seconds
+	setTimeout(() => {
+		sLog('Forcing shutdown after timeout', {});
+		process.exit(1);
+	}, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

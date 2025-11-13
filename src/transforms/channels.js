@@ -23,7 +23,7 @@ export function transformChannelEvent(record, context) {
 		event: 'daily channel activity',
 		properties: {
 			...record,
-			distinct_id: record.channel_id,
+			distinct_id: "",  // DO NOT ASSOCIATE WITH A USER!
 			time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 			channel_id: record.channel_id,
 			date: record.date
