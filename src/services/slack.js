@@ -754,6 +754,70 @@ async function getChannelMessageAnalytics(channelId, options = {}) {
 	return analytics;
 }
 
+/**
+ * Get detailed information about a specific user
+ * Combines data from users.info and users.profile.get
+ * @param {string} userId - The Slack user ID to fetch details for
+ * @returns {Promise<Object>} User details including profile information
+ * @throws {Error} When API calls fail
+ * @example
+ * const userDetails = await getUserDetails('U1234567890');
+ * console.log(userDetails.user.real_name, userDetails.user.profile.email);
+ */
+async function getUserDetails(userId) {
+	await ensureSlackInitialized();
+
+	try {
+		// Fetch basic user info
+		const userInfoResponse = await slackBotClient.users.info({ user: userId });
+
+		// Fetch extended profile info
+		const profileResponse = await slackBotClient.users.profile.get({ user: userId });
+
+		return {
+			user: userInfoResponse.user,
+			profile: profileResponse.profile,
+			ok: userInfoResponse.ok
+		};
+	} catch (error) {
+		console.error(`SLACK: Failed to fetch user details for ${userId}:`, error.message);
+		throw error;
+	}
+}
+
+/**
+ * Get detailed information about a specific channel/conversation
+ * @param {string} channelId - The Slack channel ID to fetch details for
+ * @param {Object} [options] - Optional parameters
+ * @param {boolean} [options.include_num_members=true] - Include member count
+ * @returns {Promise<Object>} Channel details including metadata
+ * @throws {Error} When API call fails
+ * @example
+ * const channelDetails = await getChannelDetails('C1234567890');
+ * console.log(channelDetails.channel.name, channelDetails.channel.num_members);
+ */
+async function getChannelDetails(channelId, options = {}) {
+	await ensureSlackInitialized();
+
+	const { include_num_members = true } = options;
+
+	try {
+		// Use user client for broader channel access
+		const response = await slackUserClient.conversations.info({
+			channel: channelId,
+			include_num_members
+		});
+
+		return {
+			channel: response.channel,
+			ok: response.ok
+		};
+	} catch (error) {
+		console.error(`SLACK: Failed to fetch channel details for ${channelId}:`, error.message);
+		throw error;
+	}
+}
+
 // Initialize Slack tokens (non-blocking for faster server startup)
 let slackInitialized = false;
 let slackInitPromise = null;
@@ -789,6 +853,8 @@ ensureSlackInitialized();
  * @property {Function} analytics - Analytics data fetcher
  * @property {Function} getChannels - Channels fetcher
  * @property {Function} getUsers - Users fetcher
+ * @property {Function} getUserDetails - User details fetcher
+ * @property {Function} getChannelDetails - Channel details fetcher
  * @property {Function} getUserMessages - User messages fetcher
  * @property {Function} getUserMessageAnalytics - User message analytics calculator
  * @property {Function} getChannelMessages - Channel messages fetcher
@@ -804,6 +870,8 @@ const slackService = {
 	analytics,
 	getChannels,
 	getUsers,
+	getUserDetails,
+	getChannelDetails,
 	getUserMessages,
 	getUserMessageAnalytics,
 	getChannelMessages,
