@@ -1,6 +1,19 @@
 /**
  * @fileoverview Transform functions for channel data
  * @module ChannelTransforms
+ *
+ * NOTE: Analytics records now include an ENRICHED key with detailed channel information:
+ * record.ENRICHED = {
+ *   channel: {
+ *     id, name, topic, purpose, num_members,
+ *     is_private, is_archived, is_ext_shared,
+ *     creator, created, ...
+ *   },
+ *   ok: true
+ * }
+ *
+ * You can selectively pull fields from ENRICHED to include in events/profiles.
+ * Example: record.ENRICHED?.channel?.creator or record.ENRICHED?.channel?.is_ext_shared
  */
 
 import dayjs from 'dayjs';
@@ -10,7 +23,7 @@ dayjs.extend(utc);
 
 /**
  * Transform channel analytics record to Mixpanel event
- * @param {Object} record - Raw Slack analytics record
+ * @param {Object} record - Raw Slack analytics record (includes ENRICHED key)
  * @param {Object} context - Heavy objects (slackChannels, etc.)
  * @returns {Object|null} Mixpanel event or null to skip
  */

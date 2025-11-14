@@ -1,6 +1,16 @@
 /**
  * @fileoverview Transform functions for member data
  * @module MemberTransforms
+ *
+ * NOTE: Analytics records now include an ENRICHED key with detailed user information:
+ * record.ENRICHED = {
+ *   user: { id, real_name, tz, is_admin, ... },
+ *   profile: { email, phone, title, status_text, fields, ... },
+ *   ok: true
+ * }
+ *
+ * You can selectively pull fields from ENRICHED to include in events/profiles.
+ * Example: record.ENRICHED?.profile?.title or record.ENRICHED?.user?.tz
  */
 
 import dayjs from 'dayjs';
@@ -10,7 +20,7 @@ dayjs.extend(utc);
 
 /**
  * Transform member analytics record to Mixpanel event
- * @param {Object} record - Raw Slack analytics record
+ * @param {Object} record - Raw Slack analytics record (includes ENRICHED key)
  * @param {Object} context - Heavy objects (slackMembers, etc.)
  * @returns {Object|null} Mixpanel event or null to skip
  */
