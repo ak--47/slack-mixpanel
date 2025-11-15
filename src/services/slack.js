@@ -671,6 +671,61 @@ async function getChannelMessages(channelId, options = {}) {
 }
 
 /**
+ * Get detailed information about a specific user
+ * @param {string} userId - The Slack user ID
+ * @returns {Promise<Object>} User details with both user info and profile
+ * @throws {Error} When API calls fail
+ * @example
+ * const details = await getUserDetails('U1234567890');
+ * console.log(details.user.real_name, details.profile.title);
+ */
+async function getUserDetails(userId) {
+	await ensureSlackInitialized();
+
+	try {
+		// Fetch both user info and profile in parallel
+		const [userInfo, profileInfo] = await Promise.all([
+			slackUserClient.users.info({ user: userId }),
+			slackUserClient.users.profile.get({ user: userId })
+		]);
+
+		return {
+			user: userInfo.user,
+			profile: profileInfo.profile,
+			ok: true
+		};
+	} catch (error) {
+		console.error(`Error fetching details for user ${userId}:`, error.message);
+		throw error;
+	}
+}
+
+/**
+ * Get detailed information about a specific channel
+ * @param {string} channelId - The Slack channel ID
+ * @returns {Promise<Object>} Channel details
+ * @throws {Error} When API calls fail
+ * @example
+ * const details = await getChannelDetails('C1234567890');
+ * console.log(details.channel.name, details.channel.topic);
+ */
+async function getChannelDetails(channelId) {
+	await ensureSlackInitialized();
+
+	try {
+		const response = await slackUserClient.conversations.info({ channel: channelId });
+
+		return {
+			channel: response.channel,
+			ok: true
+		};
+	} catch (error) {
+		console.error(`Error fetching details for channel ${channelId}:`, error.message);
+		throw error;
+	}
+}
+
+/**
  * Get message analytics summary for a specific channel
  * @param {string} channelId - The Slack channel ID to analyze
  * @param {Object} [options] - Optional filtering parameters (same as getChannelMessages)
@@ -789,6 +844,8 @@ ensureSlackInitialized();
  * @property {Function} analytics - Analytics data fetcher
  * @property {Function} getChannels - Channels fetcher
  * @property {Function} getUsers - Users fetcher
+ * @property {Function} getUserDetails - User details fetcher (info + profile)
+ * @property {Function} getChannelDetails - Channel details fetcher
  * @property {Function} getUserMessages - User messages fetcher
  * @property {Function} getUserMessageAnalytics - User message analytics calculator
  * @property {Function} getChannelMessages - Channel messages fetcher
@@ -804,6 +861,8 @@ const slackService = {
 	analytics,
 	getChannels,
 	getUsers,
+	getUserDetails,
+	getChannelDetails,
 	getUserMessages,
 	getUserMessageAnalytics,
 	getChannelMessages,

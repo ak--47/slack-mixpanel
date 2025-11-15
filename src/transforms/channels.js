@@ -1,6 +1,18 @@
 /**
  * @fileoverview Transform functions for channel data
  * @module ChannelTransforms
+ *
+ * NOTE: Analytics records now include an ENRICHED key with detailed channel information:
+ * record.ENRICHED = {
+ *   channel: {
+ *     id, name, topic, purpose, num_members,
+ *     is_private, is_archived, is_ext_shared,
+ *     creator, created, ...
+ *   },
+ *   ok: true
+ * }
+ *
+ * Enrichment is ONLY used for profiles. Events use basic analytics + lookup data.
  */
 
 import dayjs from 'dayjs';
@@ -10,7 +22,7 @@ dayjs.extend(utc);
 
 /**
  * Transform channel analytics record to Mixpanel event
- * @param {Object} record - Raw Slack analytics record
+ * @param {Object} record - Raw Slack analytics record (includes ENRICHED key)
  * @param {Object} context - Heavy objects (slackChannels, etc.)
  * @returns {Object|null} Mixpanel event or null to skip
  */
@@ -19,41 +31,44 @@ export function transformChannelEvent(record, context) {
 
 	const channelDetails = slackChannels.find((c) => c.id === record.channel_id);
 
+	const { ENRICHED = {}, ...recordWithoutEnriched } = record;
+	// EVENTS DON'T GET ENRICHED, SO WE IGNORE the ENRICHED key here
+
+	// Add basic channel details from lookup
+	if (channelDetails) {
+		recordWithoutEnriched.name = `#${channelDetails.name}`;
+		recordWithoutEnriched['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
+
+		if (channelDetails.purpose?.value) {
+			recordWithoutEnriched.purpose = channelDetails.purpose.value;
+		}
+		if (channelDetails.topic?.value) {
+			recordWithoutEnriched.topic = channelDetails.topic.value;
+		}
+		if (channelDetails.is_ext_shared) {
+			recordWithoutEnriched.external = true;
+		}
+		if (channelDetails.is_shared) {
+			recordWithoutEnriched.external = true;
+		}
+		if (channelDetails.is_private) {
+			recordWithoutEnriched.private = true;
+		}
+		if (channelDetails.num_members) {
+			recordWithoutEnriched.members = channelDetails.num_members;
+		}
+	}
+
 	const event = {
 		event: 'daily channel activity',
 		properties: {
-			...record,
+			...recordWithoutEnriched,
 			distinct_id: "",  // DO NOT ASSOCIATE WITH A USER!
 			time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 			channel_id: record.channel_id,
 			date: record.date
 		}
 	};
-
-	// Add channel details if available
-	if (channelDetails) {
-		event.properties.name = `#${channelDetails.name}`;
-		event.properties['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
-
-		if (channelDetails.purpose?.value) {
-			event.properties.purpose = channelDetails.purpose.value;
-		}
-		if (channelDetails.topic?.value) {
-			event.properties.topic = channelDetails.topic.value;
-		}
-		if (channelDetails.is_ext_shared) {
-			event.properties.external = true;
-		}
-		if (channelDetails.is_shared) {
-			event.properties.external = true;
-		}
-		if (channelDetails.is_private) {
-			event.properties.private = true;
-		}
-		if (channelDetails.num_members) {
-			event.properties.members = channelDetails.num_members;
-		}
-	}
 
 	return event;
 }
@@ -69,43 +84,57 @@ export function transformChannelProfile(record, context) {
 
 	const channelDetails = slackChannels.find((c) => c.id === record.channel_id);
 
+	// ===== ENRICHED DATA HOOK =====
+	// Extract ENRICHED data and merge all channel fields
+	const ENRICHED = record.ENRICHED || {};
+	const { channel: enrichedChannel = {} } = ENRICHED;
+	const enrichedFields = { ...enrichedChannel };
+
+	if (Object.keys(enrichedFields).length > 1) debugger;
+	// Add channel details if available from the lookup
+	if (channelDetails) {
+		enrichedFields.$name = `#${channelDetails.name}`;
+		enrichedFields.channel_name = `${channelDetails.name}`;
+		enrichedFields['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
+		enrichedFields.$email = `${slack_prefix}/${record.channel_id}`;
+		enrichedFields.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
+
+		if (channelDetails.purpose?.value) {
+			enrichedFields.purpose = channelDetails.purpose.value;
+		}
+		if (channelDetails.topic?.value) {
+			enrichedFields.topic = channelDetails.topic.value;
+		}
+		if (channelDetails.is_ext_shared) {
+			enrichedFields.external = true;
+		}
+		if (channelDetails.is_shared) {
+			enrichedFields.external = true;
+		}
+		if (channelDetails.is_private) {
+			enrichedFields.private = true;
+		}
+		if (channelDetails.num_members) {
+			enrichedFields.members = channelDetails.num_members;
+		}
+	}
+
+	// Make sure fields doesn't have any complex objects
+	for (const key in enrichedFields) {
+		const value = enrichedFields[key];
+		// if (Array.isArray(value)) delete enrichedFields[key];
+		// if (typeof value === "object" && value !== null) delete enrichedFields[key];
+	}
+
 	const profile = {
 		$group_key: channel_group_key,
 		$group_id: record.channel_id,
 		$set: {
-			...record,
-			// distinct_id: record.channel_id,
+			...enrichedFields, // all the fields!
+			// Override with required fields
 			date: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix()
 		}
 	};
-
-	// Add channel details if available
-	if (channelDetails) {
-		profile.$set.$name = `#${channelDetails.name}`;
-		profile.$set.channel_name = `${channelDetails.name}`;
-		profile.$set['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
-		profile.$set.$email = `${slack_prefix}/${record.channel_id}`;
-		profile.$set.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
-
-		if (channelDetails.purpose?.value) {
-			profile.$set.purpose = channelDetails.purpose.value;
-		}
-		if (channelDetails.topic?.value) {
-			profile.$set.topic = channelDetails.topic.value;
-		}
-		if (channelDetails.is_ext_shared) {
-			profile.$set.external = true;
-		}
-		if (channelDetails.is_shared) {
-			profile.$set.external = true;
-		}
-		if (channelDetails.is_private) {
-			profile.$set.private = true;
-		}
-		if (channelDetails.num_members) {
-			profile.$set.members = channelDetails.num_members;
-		}
-	}
 
 	return profile;
 }
