@@ -13,7 +13,10 @@ import 'dotenv/config';
 
 dayjs.extend(utc);
 
-const { company_domain } = process.env;
+const { company_domain, NODE_ENV } = process.env;
+
+// Limit enrichment in dev mode for faster testing (1M in prod, 10 in dev)
+const MAX_ENRICHMENT = NODE_ENV === 'production' ? 1_000_000 : 10;
 
 /**
  * Enrich user analytics records with detailed user information
@@ -24,6 +27,7 @@ const { company_domain } = process.env;
  * - error: Error message if the fetch failed
  *
  * @param {Array} records - Analytics records with user_id fields
+ * @param {Map} userDetailsMap - Shared map to cache user details across multiple calls
  * @returns {Promise<Array>} Records with ENRICHED key containing user details
  * @example
  * // Enriched record structure:
@@ -38,21 +42,49 @@ const { company_domain } = process.env;
  *   }
  * }
  */
-async function enrichUserRecords(records) {
+async function enrichUserRecords(records, userDetailsMap) {
 	if (!records || records.length === 0) return records;
 
-	// Get unique user IDs from the records
+	// Get unique user IDs from the records that aren't already cached
 	const uniqueUserIds = [...new Set(records.map(r => r.user_id).filter(Boolean))];
+	const uncachedUserIds = uniqueUserIds.filter(userId => !userDetailsMap.has(userId));
 
-	if (uniqueUserIds.length === 0) return records;
+	// Check if we've hit the MAX_ENRICHMENT limit
+	const totalEnriched = userDetailsMap.size;
+	const remainingSlots = MAX_ENRICHMENT - totalEnriched;
 
-	logger.verbose(`[ENRICH] Fetching details for ${uniqueUserIds.length} unique users`);
+	if (remainingSlots <= 0) {
+		logger.verbose(`[ENRICH] ⚠️  MAX_ENRICHMENT limit (${MAX_ENRICHMENT}) reached, skipping ${uncachedUserIds.length} users`);
+		// Add ENRICHED key to each record from cache (null for uncached)
+		return records.map(record => ({
+			...record,
+			ENRICHED: userDetailsMap.get(record.user_id) || null
+		}));
+	}
+
+	if (uncachedUserIds.length === 0) {
+		logger.verbose(`[ENRICH] ✅ All ${uniqueUserIds.length} users already cached`);
+		// Add ENRICHED key to each record from cache
+		return records.map(record => ({
+			...record,
+			ENRICHED: userDetailsMap.get(record.user_id) || null
+		}));
+	}
+
+	// Limit to remaining slots
+	const usersToFetch = uncachedUserIds.slice(0, remainingSlots);
+	const skippedCount = uncachedUserIds.length - usersToFetch.length;
+
+	if (skippedCount > 0) {
+		logger.verbose(`[ENRICH] ⚠️  Limiting to ${usersToFetch.length} users (${skippedCount} skipped due to MAX_ENRICHMENT=${MAX_ENRICHMENT})`);
+	}
+
+	logger.verbose(`[ENRICH] Fetching details for ${usersToFetch.length} new users (${uniqueUserIds.length - uncachedUserIds.length} cached)`);
 
 	// Fetch user details with concurrency control (rate limiting)
-	const limit = pLimit(2); // Conservative: 2 concurrent requests
-	const userDetailsMap = new Map();
+	const limit = pLimit(1); // Conservative: 1 concurrent request
 
-	const fetchPromises = uniqueUserIds.map(userId =>
+	const fetchPromises = usersToFetch.map(userId =>
 		limit(async () => {
 			try {
 				const details = await slackService.getUserDetails(userId);
@@ -87,6 +119,7 @@ async function enrichUserRecords(records) {
  * - error: Error message if the fetch failed
  *
  * @param {Array} records - Analytics records with channel_id fields
+ * @param {Map} channelDetailsMap - Shared map to cache channel details across multiple calls
  * @returns {Promise<Array>} Records with ENRICHED key containing channel details
  * @example
  * // Enriched record structure:
@@ -108,21 +141,49 @@ async function enrichUserRecords(records) {
  *   }
  * }
  */
-async function enrichChannelRecords(records) {
+async function enrichChannelRecords(records, channelDetailsMap) {
 	if (!records || records.length === 0) return records;
 
-	// Get unique channel IDs from the records
+	// Get unique channel IDs from the records that aren't already cached
 	const uniqueChannelIds = [...new Set(records.map(r => r.channel_id).filter(Boolean))];
+	const uncachedChannelIds = uniqueChannelIds.filter(channelId => !channelDetailsMap.has(channelId));
 
-	if (uniqueChannelIds.length === 0) return records;
+	// Check if we've hit the MAX_ENRICHMENT limit
+	const totalEnriched = channelDetailsMap.size;
+	const remainingSlots = MAX_ENRICHMENT - totalEnriched;
 
-	logger.verbose(`[ENRICH] Fetching details for ${uniqueChannelIds.length} unique channels`);
+	if (remainingSlots <= 0) {
+		logger.verbose(`[ENRICH] ⚠️  MAX_ENRICHMENT limit (${MAX_ENRICHMENT}) reached, skipping ${uncachedChannelIds.length} channels`);
+		// Add ENRICHED key to each record from cache (null for uncached)
+		return records.map(record => ({
+			...record,
+			ENRICHED: channelDetailsMap.get(record.channel_id) || null
+		}));
+	}
+
+	if (uncachedChannelIds.length === 0) {
+		logger.verbose(`[ENRICH] ✅ All ${uniqueChannelIds.length} channels already cached`);
+		// Add ENRICHED key to each record from cache
+		return records.map(record => ({
+			...record,
+			ENRICHED: channelDetailsMap.get(record.channel_id) || null
+		}));
+	}
+
+	// Limit to remaining slots
+	const channelsToFetch = uncachedChannelIds.slice(0, remainingSlots);
+	const skippedCount = uncachedChannelIds.length - channelsToFetch.length;
+
+	if (skippedCount > 0) {
+		logger.verbose(`[ENRICH] ⚠️  Limiting to ${channelsToFetch.length} channels (${skippedCount} skipped due to MAX_ENRICHMENT=${MAX_ENRICHMENT})`);
+	}
+
+	logger.verbose(`[ENRICH] Fetching details for ${channelsToFetch.length} new channels (${uniqueChannelIds.length - uncachedChannelIds.length} cached)`);
 
 	// Fetch channel details with concurrency control (rate limiting)
-	const limit = pLimit(2); // Conservative: 2 concurrent requests
-	const channelDetailsMap = new Map();
+	const limit = pLimit(1); // Conservative: 1 concurrent request
 
-	const fetchPromises = uniqueChannelIds.map(channelId =>
+	const fetchPromises = channelsToFetch.map(channelId =>
 		limit(async () => {
 			try {
 				const details = await slackService.getChannelDetails(channelId);
@@ -169,6 +230,9 @@ export async function extractMemberAnalytics(startDate, endDate) {
 	const files = [];
 	let currentDay = 0;
 
+	// Create a shared map to cache user details across all days
+	const userDetailsMap = new Map();
+
 	for (const date of daysToFetch) {
 		currentDay++;
 		const progress = `[${currentDay}/${totalDays}]`;
@@ -193,8 +257,8 @@ export async function extractMemberAnalytics(startDate, endDate) {
 					: data;
 
 				if (filteredData.length > 0) {
-					// Enrich with detailed user information
-					const enrichedData = await enrichUserRecords(filteredData);
+					// Enrich with detailed user information (uses shared map)
+					const enrichedData = await enrichUserRecords(filteredData, userDetailsMap);
 
 					// Write enriched data to file
 					const writtenPath = await storage.writeJSONLGz(filePath, enrichedData);
@@ -240,6 +304,9 @@ export async function extractChannelAnalytics(startDate, endDate) {
 	const files = [];
 	let currentDay = 0;
 
+	// Create a shared map to cache channel details across all days
+	const channelDetailsMap = new Map();
+
 	for (const date of daysToFetch) {
 		currentDay++;
 		const progress = `[${currentDay}/${totalDays}]`;
@@ -258,8 +325,8 @@ export async function extractChannelAnalytics(startDate, endDate) {
 			const data = await slackService.analytics(date, date, 'public_channel', false);
 
 			if (data && data.length > 0) {
-				// Enrich with detailed channel information
-				const enrichedData = await enrichChannelRecords(data);
+				// Enrich with detailed channel information (uses shared map)
+				const enrichedData = await enrichChannelRecords(data, channelDetailsMap);
 
 				// Write enriched data to file
 				const writtenPath = await storage.writeJSONLGz(filePath, enrichedData);

@@ -15,6 +15,7 @@
 
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
+const { NODE_ENV = "unknown" } = process.env;
 
 dayjs.extend(utc);
 
@@ -32,10 +33,21 @@ export function transformMemberEvent(record, context) {
 
 	const memberDetails = slackMembers.find((m) => m.id === record.user_id);
 
+
+	const { ENRICHED = {}, ...recordWithoutEnriched } = record;
+	// EVENTS DON'T GET ENRICHED, SO WE IGNORE the ENRICHED key here
+
+	// but we still add some details
+	if (memberDetails) {
+		recordWithoutEnriched.name = memberDetails.real_name;
+		recordWithoutEnriched.display_name = memberDetails.profile?.display_name;
+		recordWithoutEnriched.timezone = memberDetails.tz;
+	}
+
 	const event = {
-		event: 'daily user activity',		
+		event: 'daily user activity',
 		properties: {
-			...record,
+			...recordWithoutEnriched,
 			$user_id: record.user_id, // this is the primary UUID
 			time: dayjs.utc(record.date).add(4, 'h').add(20, 'm').unix(),
 			email: record.email_address,
@@ -45,12 +57,7 @@ export function transformMemberEvent(record, context) {
 		}
 	};
 
-	// Add member details if available
-	if (memberDetails) {
-		event.properties.name = memberDetails.real_name;
-		event.properties.display_name = memberDetails.profile?.display_name;
-		event.properties.timezone = memberDetails.tz;
-	}
+
 
 	return event;
 }
@@ -69,9 +76,34 @@ export function transformMemberProfile(record, context) {
 
 	const memberDetails = slackMembers.find((m) => m.id === record.user_id);
 
+	// ===== ENRICHED DATA HOOK =====
+	// Extract ENRICHED data (we don't spread record here, so no need for rest)
+	const { ENRICHED = {} } = record;
+	const { user: enrichedUser = {}, profile: enrichedProfile = {} } = ENRICHED;
+	const enrichedFields = { ...enrichedUser, ...enrichedProfile };
+
+	// Add member details if available from the lookup
+	if (memberDetails && memberDetails.profile) {
+		enrichedFields.avatar = memberDetails.profile.image_512;
+		enrichedFields.title = memberDetails.profile.title;
+		enrichedFields.name = memberDetails.real_name;
+		enrichedFields.display_name = memberDetails.profile.display_name;
+		enrichedFields.timezone = memberDetails.tz;
+	}
+
+
+	// make sure fields doesn't have any complex objects
+	loopProps: for (const key in enrichedFields) {
+		const value = enrichedFields[key];
+		if (Array.isArray(value)) delete enrichedFields[key];
+		if (typeof value === "object") delete enrichedFields[key];
+		if (key.startsWith("image_")) delete enrichedFields[key];
+	}
+
 	const profile = {
 		$distinct_id: record.user_id, // Use Slack user ID as distinct_id (must match events)
 		$set: {
+			...enrichedFields, // all the fields!
 			slack_id: record.user_id,
 			$email: record.email_address,
 			slack_team_id: record.team_id,
@@ -79,15 +111,6 @@ export function transformMemberProfile(record, context) {
 			is_active: record.is_active
 		}
 	};
-
-	// Add member details if available
-	if (memberDetails && memberDetails.profile) {
-		profile.$set.avatar = memberDetails.profile.image_512;
-		profile.$set.title = memberDetails.profile.title;
-		profile.$set.name = memberDetails.real_name;
-		profile.$set.display_name = memberDetails.profile.display_name;
-		profile.$set.timezone = memberDetails.tz;
-	}
 
 	return profile;
 }

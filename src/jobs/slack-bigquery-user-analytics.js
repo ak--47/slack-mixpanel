@@ -271,7 +271,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		}
 
 		// Debugger for dev inspection
-		if (NODE_ENV === 'dev') debugger;
+		// if (NODE_ENV === 'dev') debugger;
 
 	} catch (error) {
 		console.error('❌ Pipeline execution failed:', error);
