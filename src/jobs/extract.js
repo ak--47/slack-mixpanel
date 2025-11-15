@@ -15,7 +15,7 @@ dayjs.extend(utc);
 
 const { company_domain, NODE_ENV } = process.env;
 
-// Limit enrichment in dev mode for faster testing (1M in prod, 10 in dev)
+// Limit enrichment in dev/test modes for faster testing (1M in prod, 10 in dev/test)
 const MAX_ENRICHMENT = NODE_ENV === 'production' ? 1_000_000 : 10;
 
 /**

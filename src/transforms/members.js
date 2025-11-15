@@ -78,9 +78,49 @@ export function transformMemberProfile(record, context) {
 
 	// ===== ENRICHED DATA HOOK =====
 	// Extract ENRICHED data (we don't spread record here, so no need for rest)
-	const { ENRICHED = {} } = record;
+	const ENRICHED = record.ENRICHED || {};
 	const { user: enrichedUser = {}, profile: enrichedProfile = {} } = ENRICHED;
 	const enrichedFields = { ...enrichedUser, ...enrichedProfile };
+
+	const { fields: customFields } = enrichedFields;
+	const fieldDfns = [{
+		"id": "Xf013B5DC38A",
+		"label": "Division"
+	},
+	{
+		"id": "Xf0139PMR3CM",
+		"label": "Department"
+	},
+	{
+		"id": "Xf013HAN47PW",
+		"label": "profile_title"
+	},
+	{
+		"id": "Xf013HAN4A92",
+		"label": "manager"
+	},
+	{
+		"id": "Xf03JNMJ0DRV",
+		"label": "pronunciation"
+	}];
+
+	if (customFields) {
+		for (const fieldDef of fieldDfns) {
+			const customField = customFields[fieldDef.id];
+			if (customField && customField.value) {
+				// For manager field, look up the email address
+				if (fieldDef.label === 'manager') {
+					const managerUser = slackMembers.find(m => m.id === customField.value);
+					if (managerUser) {
+						enrichedFields[fieldDef.label] = managerUser.real_name || managerUser.name
+					}
+				} else {
+					// For other fields, just use the value
+					enrichedFields[fieldDef.label] = customField.value;
+				}
+			}
+		}
+	}
 
 	// Add member details if available from the lookup
 	if (memberDetails && memberDetails.profile) {

@@ -86,10 +86,11 @@ export function transformChannelProfile(record, context) {
 
 	// ===== ENRICHED DATA HOOK =====
 	// Extract ENRICHED data and merge all channel fields
-	const { ENRICHED = {} } = record;
+	const ENRICHED = record.ENRICHED || {};
 	const { channel: enrichedChannel = {} } = ENRICHED;
 	const enrichedFields = { ...enrichedChannel };
 
+	if (Object.keys(enrichedFields).length > 1) debugger;
 	// Add channel details if available from the lookup
 	if (channelDetails) {
 		enrichedFields.$name = `#${channelDetails.name}`;
@@ -121,8 +122,8 @@ export function transformChannelProfile(record, context) {
 	// Make sure fields doesn't have any complex objects
 	for (const key in enrichedFields) {
 		const value = enrichedFields[key];
-		if (Array.isArray(value)) delete enrichedFields[key];
-		if (typeof value === "object" && value !== null) delete enrichedFields[key];
+		// if (Array.isArray(value)) delete enrichedFields[key];
+		// if (typeof value === "object" && value !== null) delete enrichedFields[key];
 	}
 
 	const profile = {
