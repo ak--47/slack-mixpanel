@@ -16,7 +16,7 @@ import utc from 'dayjs/plugin/utc.js';
 dotenv.config();
 dayjs.extend(utc);
 
-const { sLog, timer } = akTools;
+const { timer } = akTools;
 
 const {
 	NODE_ENV = "unknown"
@@ -247,7 +247,7 @@ export async function runPipeline(options = {}) {
 		return result;
 
 	} catch (error) {
-		console.error('PIPELINE ERROR:', error);
+		logger.error('PIPELINE ERROR:', error);
 		throw error;
 	}
 }

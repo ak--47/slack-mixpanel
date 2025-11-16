@@ -10,6 +10,7 @@ import { createGzip, createGunzip } from 'zlib';
 import { pipeline } from 'stream/promises';
 import { Storage as GCSStorage } from '@google-cloud/storage';
 import 'dotenv/config';
+import logger from '../utils/logger.js';
 
 const { gcs_path, gcs_project = 'mixpanel-gtm-training' } = process.env;
 
@@ -208,13 +209,13 @@ export async function deleteFile(filePath) {
 		const file = gcsClient.bucket(bucket).file(gcsFilePath);
 
 		await file.delete();
-		console.log(`🗑️  Deleted GCS file: gs://${bucket}/${gcsFilePath}`);
+		logger.verbose(`🗑️  Deleted GCS file: gs://${bucket}/${gcsFilePath}`);
 
 	} else {
 		const fullPath = path.join(basePath, filePath);
 		if (fs.existsSync(fullPath)) {
 			fs.unlinkSync(fullPath);
-			console.log(`🗑️  Deleted local file: ${fullPath}`);
+			logger.verbose(`🗑️  Deleted local file: ${fullPath}`);
 		}
 	}
 }
@@ -255,7 +256,7 @@ export async function clearDirectory(dirPath) {
 			count++;
 		}
 
-		console.log(`🗑️  Cleared ${count} files from GCS directory: gs://${bucket}/${gcsDirPath}`);
+		logger.verbose(`🗑️  Cleared ${count} files from GCS directory: gs://${bucket}/${gcsDirPath}`);
 
 	} else {
 		const fullPath = path.join(basePath, dirPath);
@@ -265,7 +266,7 @@ export async function clearDirectory(dirPath) {
 				fs.unlinkSync(path.join(fullPath, file));
 				count++;
 			}
-			console.log(`🗑️  Cleared ${count} files from local directory: ${fullPath}`);
+			logger.verbose(`🗑️  Cleared ${count} files from local directory: ${fullPath}`);
 		}
 	}
 

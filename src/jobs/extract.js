@@ -258,8 +258,9 @@ export async function extractMemberAnalytics(startDate, endDate) {
 
 				if (filteredData.length > 0) {
 					// Enrich with detailed user information (uses shared map)
+					logger.summary(`[EXTRACT] enriching ${filteredData.length} user records for ${date}`);
 					const enrichedData = await enrichUserRecords(filteredData, userDetailsMap);
-
+					
 					// Write enriched data to file
 					const writtenPath = await storage.writeJSONLGz(filePath, enrichedData);
 					logger.verbose(`[EXTRACT] ${progress} ✅ ${date}: ${filteredData.length}/${data.length} records (@${company_domain})`);
@@ -326,6 +327,7 @@ export async function extractChannelAnalytics(startDate, endDate) {
 
 			if (data && data.length > 0) {
 				// Enrich with detailed channel information (uses shared map)
+				logger.summary(`[EXTRACT] enriching ${data.length} channel records for ${date}`);
 				const enrichedData = await enrichChannelRecords(data, channelDetailsMap);
 
 				// Write enriched data to file

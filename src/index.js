@@ -4,11 +4,12 @@ import { runPipeline } from './jobs/run-pipeline.js';
 import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
+import logger from './utils/logger.js';
 
 dotenv.config();
 dayjs.extend(utc);
 
-const { sLog, timer } = akTools;
+const { timer } = akTools;
 const {
 	NODE_ENV = "unknown",
 	PORT = 8080
@@ -102,11 +103,11 @@ function parseParameters(req) {
 // Error handling for development
 if (NODE_ENV === 'dev') {
 	process.on('uncaughtException', (e, p) => {
-		console.error('Uncaught Exception:', e);
+		logger.error('Uncaught Exception:', e);
 	});
 
 	process.on('unhandledRejection', (e, p) => {
-		console.error('Unhandled Rejection:', e);
+		logger.error('Unhandled Rejection:', e);
 	});
 }
 
@@ -152,7 +153,7 @@ app.post('/mixpanel-members', async (req, res) => {
 	try {
 		const params = parseParameters(req);
 
-		sLog('START JOB: slack-members', { params });
+		logger.info('START JOB: slack-members', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -160,7 +161,7 @@ app.post('/mixpanel-members', async (req, res) => {
 			pipelines: ['members']
 		});
 
-		sLog(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
+		logger.info(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -170,7 +171,7 @@ app.post('/mixpanel-members', async (req, res) => {
 		});
 
 	} catch (error) {
-		console.error('ERROR JOB: slack-members', error);
+		logger.error('ERROR JOB: slack-members', error);
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
@@ -192,7 +193,7 @@ app.post('/mixpanel-channels', async (req, res) => {
 	try {
 		const params = parseParameters(req);
 
-		sLog('START JOB: slack-channels', { params });
+		logger.info('START JOB: slack-channels', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -200,7 +201,7 @@ app.post('/mixpanel-channels', async (req, res) => {
 			pipelines: ['channels']
 		});
 
-		sLog(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
+		logger.info(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -210,7 +211,7 @@ app.post('/mixpanel-channels', async (req, res) => {
 		});
 
 	} catch (error) {
-		console.error('ERROR JOB: slack-channels', error);
+		logger.error('ERROR JOB: slack-channels', error);
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
@@ -232,7 +233,7 @@ app.post('/mixpanel-all', async (req, res) => {
 	try {
 		const params = parseParameters(req);
 
-		sLog('START JOB: slack-all', { params });
+		logger.info('START JOB: slack-all', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -240,7 +241,7 @@ app.post('/mixpanel-all', async (req, res) => {
 			pipelines: ['members', 'channels']
 		});
 
-		sLog(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
+		logger.info(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -250,7 +251,7 @@ app.post('/mixpanel-all', async (req, res) => {
 		});
 
 	} catch (error) {
-		console.error('ERROR JOB: slack-all', error);
+		logger.error('ERROR JOB: slack-all', error);
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
@@ -267,23 +268,16 @@ app.post('/mixpanel-all', async (req, res) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-	sLog(`Slack-Mixpanel pipeline server running on port ${PORT} in ${NODE_ENV} mode`, {});
+	logger.info(`Slack-Mixpanel pipeline server running on port ${PORT} in ${NODE_ENV} mode`);
 });
 
-// Graceful shutdown handler
-function gracefulShutdown(signal) {
-	sLog(`Received ${signal}, closing server gracefully...`, {});
-	server.close(() => {
-		sLog('Server closed', {});
-		process.exit(0);
-	});
+// Graceful shutdown handler (quiet for serverless)
+function gracefulShutdown() {
+	server.close(() => process.exit(0));
 
 	// Force exit after 10 seconds
-	setTimeout(() => {
-		sLog('Forcing shutdown after timeout', {});
-		process.exit(1);
-	}, 10000);
+	setTimeout(() => process.exit(1), 10000);
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
