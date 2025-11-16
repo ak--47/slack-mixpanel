@@ -685,8 +685,8 @@ async function getUserDetails(userId) {
 	try {
 		// Fetch both user info and profile in parallel
 		const [userInfo, profileInfo] = await Promise.all([
-			slackUserClient.users.info({ user: userId }),
-			slackUserClient.users.profile.get({ user: userId })
+			slackBotClient.users.info({ user: userId }),
+			slackBotClient.users.profile.get({ user: userId })
 		]);
 
 		return {
