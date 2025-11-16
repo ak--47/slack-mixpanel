@@ -161,7 +161,7 @@ app.post('/mixpanel-members', async (req, res) => {
 			pipelines: ['members']
 		});
 
-		logger.info(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
+		logger.summary(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -201,7 +201,7 @@ app.post('/mixpanel-channels', async (req, res) => {
 			pipelines: ['channels']
 		});
 
-		logger.info(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
+		logger.summary(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -241,7 +241,7 @@ app.post('/mixpanel-all', async (req, res) => {
 			pipelines: ['members', 'channels']
 		});
 
-		logger.info(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
+		logger.summary(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
 
 		res.status(200).json({
 			status: 'success',
@@ -272,12 +272,12 @@ const server = app.listen(PORT, () => {
 });
 
 // Graceful shutdown handler (quiet for serverless)
-function gracefulShutdown() {
-	server.close(() => process.exit(0));
+// function gracefulShutdown() {
+// 	server.close(() => process.exit(0));
 
-	// Force exit after 10 seconds
-	setTimeout(() => process.exit(1), 10000);
-}
+// 	// Force exit after 10 seconds
+// 	setTimeout(() => process.exit(1), 10000);
+// }
 
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+// process.on('SIGTERM', gracefulShutdown);
+// process.on('SIGINT', gracefulShutdown);
