@@ -77,6 +77,33 @@ const slackUserClient = new WebClient(slack_user_token);
 const cache = {};
 
 /**
+ * Slack API Rate Limit Tiers and Safe Request Delays
+ *
+ * Based on Slack's documented rate limits: https://api.slack.com/docs/rate-limits
+ * Delays are calculated with ~10% safety buffer to avoid 429 errors
+ *
+ * Reference: https://api.slack.com/docs/rate-limits
+ * - Tier 1: 1+ requests per minute (most restrictive)
+ * - Tier 2: 20+ requests per minute
+ * - Tier 3: 50+ requests per minute
+ * - Tier 4: 100+ requests per minute (most generous)
+ * - Special: Unique rate limiting (e.g., auth.test allows hundreds/min)
+ *
+ * Formula: delay_ms = (60000 / target_requests_per_min)
+ * - Tier 1: 60000ms per request (1/min)
+ * - Tier 2: 3000ms per request (20/min)
+ * - Tier 3: 1333ms per request (~45/min with buffer)
+ * - Tier 4: 667ms per request (~90/min with buffer)
+ */
+const RATE_LIMIT_DELAYS = {
+	TIER_1: 60000,    // 1 request per minute
+	TIER_2: 3000,     // ~20 requests per minute
+	TIER_3: 1333,     // ~45 requests per minute
+	TIER_4: 667,      // ~90 requests per minute
+	TIER_SPECIAL: 0   // No rate limits (auth.test, etc.)
+};
+
+/**
  * Initialize Slack service and test authentication for both bot and user tokens
  * @returns {Promise<{ready: boolean, userAuth: SlackAuthResponse, botAuth: SlackAuthResponse}>} 
  * @throws {Error} When authentication fails for either token
@@ -99,6 +126,8 @@ async function initializeSlack() {
  * @param {('bot'|'user')} [clientType='bot'] - The type of client to test
  * @returns {Promise<SlackAuthResponse>} Authentication response from Slack
  * @throws {Error} When authentication fails
+ * @slack-api-method auth.test
+ * @slack-rate-limit Special (hundreds of requests per minute allowed)
  */
 async function testAuth(clientType = 'bot') {
 	try {
@@ -120,11 +149,13 @@ async function testAuth(clientType = 'bot') {
  * @param {boolean} [streamResult=true] - Whether to return Highland stream (true) or consolidated array (false)
  * @returns {Promise<any|SlackAnalyticsRecord[]>} Highland stream of analytics records or array of all records
  * @throws {Error} When API calls fail (unless known errors like data_not_available)
+ * @slack-api-method admin.analytics.getFile
+ * @slack-rate-limit Tier 2 (20 requests per minute)
  * @example
  * // Stream analytics data
  * const stream = await analytics('2024-01-01', '2024-01-07', 'member', true);
  * stream.each(record => console.log(record));
- * 
+ *
  * // Get all analytics as array
  * const data = await analytics('2024-01-01', '2024-01-07', 'member', false);
  */
@@ -175,7 +206,8 @@ async function analytics(startDate, endDate, type = 'member', streamResult = tru
 				console.log(`📊 SLACK PROGRESS: ${completed}/${daysToFetch.length} days completed (${Math.round(completed/daysToFetch.length*100)}%)`);
 			}
 
-			// Conservative rate limiting with randomized jitter to avoid 429s
+			// Tier 2 rate limit: 20/min → 3000ms per request (using 1500-3000ms with jitter)
+			// Formula: 60000ms / 20 requests/min = 3000ms
 			const baseDelay = 1500;
 			const jitter = Math.floor(Math.random() * 1500); // 0-1500ms random jitter
 			await sleep(baseDelay + jitter); // 1500-3000ms between requests
@@ -221,6 +253,8 @@ async function analytics(startDate, endDate, type = 'member', streamResult = tru
  * Fetch all Slack channels with caching and pagination support
  * @returns {Promise<SlackChannel[]>} Array of channel objects (excludes archived channels)
  * @throws {Error} When API calls fail
+ * @slack-api-method conversations.list
+ * @slack-rate-limit Tier 2 (20 requests per minute)
  * @example
  * const channels = await getChannels();
  * console.log(`Found ${channels.length} active channels`);
@@ -251,6 +285,8 @@ async function getChannels() {
  * Fetch all Slack users with caching and pagination support
  * @returns {Promise<SlackUser[]>} Array of user objects including locale information
  * @throws {Error} When API calls fail
+ * @slack-api-method users.list
+ * @slack-rate-limit Tier 2 (20 requests per minute)
  * @example
  * const users = await getUsers();
  * const activeUsers = users.filter(user => !user.deleted);
@@ -308,6 +344,8 @@ async function getUsers() {
  * @param {boolean} [options.includeReplies=true] - Whether to include reply counts
  * @returns {Promise<UserMessage[]>} Array of all messages from the user
  * @throws {Error} When API calls fail
+ * @slack-api-method search.messages, conversations.history
+ * @slack-rate-limit Tier 2 (20/min for search.messages), Tier 1 (1/min for conversations.history - non-Marketplace apps)
  * @example
  * // Get all messages from user in last 30 days
  * const messages = await getUserMessages('U1234567890', {
@@ -565,6 +603,8 @@ async function getUserMessageAnalytics(userId, options = {}) {
  * @param {boolean} [options.includeReplies=true] - Whether to include reply counts
  * @returns {Promise<ChannelMessage[]>} Array of all messages from the channel
  * @throws {Error} When API calls fail
+ * @slack-api-method conversations.history
+ * @slack-rate-limit Tier 1 (1/min for non-Marketplace apps as of May 2025)
  * @example
  * // Get all messages from channel in last 3 days (default)
  * const messages = await getChannelMessages('C1234567890');
@@ -687,6 +727,8 @@ async function getChannelMessages(channelId, options = {}) {
  * @param {string} userId - The Slack user ID
  * @returns {Promise<Object>} User details with both user info and profile
  * @throws {Error} When API calls fail
+ * @slack-api-method users.info, users.profile.get
+ * @slack-rate-limit Tier 4 (100 requests per minute)
  * @example
  * const details = await getUserDetails('U1234567890');
  * console.log(details.user.real_name, details.profile.title);
@@ -717,6 +759,8 @@ async function getUserDetails(userId) {
  * @param {string} channelId - The Slack channel ID
  * @returns {Promise<Object>} Channel details
  * @throws {Error} When API calls fail
+ * @slack-api-method conversations.info
+ * @slack-rate-limit Tier 3 (50 requests per minute) - enrichment intentionally pushes limit for performance
  * @example
  * const details = await getChannelDetails('C1234567890');
  * console.log(details.channel.name, details.channel.topic);

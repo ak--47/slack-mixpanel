@@ -89,8 +89,9 @@ async function enrichUserRecords(records, userDetailsMap) {
 	const fetchPromises = usersToFetch.map((userId, index) =>
 		limit(async () => {
 			try {
-				// Add small random delay (100-300ms) to avoid rate limits
-				const delay = 100 + Math.random() * 200;
+				// Tier 4 rate limit: 100/min → 667ms per request (using 600-734ms with jitter)
+				// Formula: 60000ms / 90 requests/min (10% safety buffer) = 667ms
+				const delay = 600 + Math.random() * 134;
 				await new Promise(resolve => setTimeout(resolve, delay));
 
 				const details = await slackService.getUserDetails(userId);
@@ -202,8 +203,10 @@ async function enrichChannelRecords(records, channelDetailsMap) {
 	const fetchPromises = channelsToFetch.map((channelId, index) =>
 		limit(async () => {
 			try {
-				// Add small random delay (100-300ms) to avoid rate limits
-				const delay = 100 + Math.random() * 200;
+				// Tier 3 rate limit: 50/min (pushing limit for speed)
+				// Target: ~69 req/min (800-950ms) to complete 4000 channels in ~60 min
+				// Note: Will trigger some 429 rate limits, but SDK auto-retries after 10s
+				const delay = 800 + Math.random() * 150;
 				await new Promise(resolve => setTimeout(resolve, delay));
 
 				const details = await slackService.getChannelDetails(channelId);
