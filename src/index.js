@@ -153,7 +153,7 @@ app.post('/mixpanel-members', async (req, res) => {
 	try {
 		const params = parseParameters(req);
 
-		logger.info('START JOB: slack-members', { params });
+		logger.summary('START JOB: slack-members', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -193,7 +193,7 @@ app.post('/mixpanel-channels', async (req, res) => {
 	try {
 		const params = parseParameters(req);
 
-		logger.info('START JOB: slack-channels', { params });
+		logger.summary('START JOB: slack-channels', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({
@@ -233,7 +233,7 @@ app.post('/mixpanel-all', async (req, res) => {
 	try {
 		const params = parseParameters(req);
 
-		logger.info('START JOB: slack-all', { params });
+		logger.summary('START JOB: slack-all', { params });
 
 		// Run file-based pipeline
 		const result = await runPipeline({

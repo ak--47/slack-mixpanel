@@ -83,17 +83,31 @@ async function enrichUserRecords(records, userDetailsMap) {
 
 	// Fetch user details with concurrency control (rate limiting)
 	const limit = pLimit(1); // Conservative: 1 concurrent request
+	let enrichedCount = 0;
+	const totalToEnrich = usersToFetch.length;
 
-	const fetchPromises = usersToFetch.map(userId =>
+	const fetchPromises = usersToFetch.map((userId, index) =>
 		limit(async () => {
 			try {
+				// Add small random delay (100-300ms) to avoid rate limits
+				const delay = 100 + Math.random() * 200;
+				await new Promise(resolve => setTimeout(resolve, delay));
+
 				const details = await slackService.getUserDetails(userId);
 				userDetailsMap.set(userId, details);
-				logger.verbose(`[ENRICH] ✅ User ${userId}`);
+				enrichedCount++;
+
+				// Progress checkpoints every 250 users
+				if (enrichedCount % 250 === 0 || enrichedCount === totalToEnrich) {
+					logger.info(`[ENRICH] Progress: ${enrichedCount}/${totalToEnrich} users enriched`);
+				} else {
+					logger.verbose(`[ENRICH] ✅ User ${userId}`);
+				}
 			} catch (error) {
 				logger.verbose(`[ENRICH] ⚠️  Failed to fetch user ${userId}: ${error.message}`);
 				// Store error state so we don't retry
 				userDetailsMap.set(userId, { error: error.message });
+				enrichedCount++;
 			}
 		})
 	);
@@ -182,17 +196,31 @@ async function enrichChannelRecords(records, channelDetailsMap) {
 
 	// Fetch channel details with concurrency control (rate limiting)
 	const limit = pLimit(1); // Conservative: 1 concurrent request
+	let enrichedCount = 0;
+	const totalToEnrich = channelsToFetch.length;
 
-	const fetchPromises = channelsToFetch.map(channelId =>
+	const fetchPromises = channelsToFetch.map((channelId, index) =>
 		limit(async () => {
 			try {
+				// Add small random delay (100-300ms) to avoid rate limits
+				const delay = 100 + Math.random() * 200;
+				await new Promise(resolve => setTimeout(resolve, delay));
+
 				const details = await slackService.getChannelDetails(channelId);
 				channelDetailsMap.set(channelId, details);
-				logger.verbose(`[ENRICH] ✅ Channel ${channelId}`);
+				enrichedCount++;
+
+				// Progress checkpoints every 250 channels
+				if (enrichedCount % 250 === 0 || enrichedCount === totalToEnrich) {
+					logger.info(`[ENRICH] Progress: ${enrichedCount}/${totalToEnrich} channels enriched`);
+				} else {
+					logger.verbose(`[ENRICH] ✅ Channel ${channelId}`);
+				}
 			} catch (error) {
 				logger.verbose(`[ENRICH] ⚠️  Failed to fetch channel ${channelId}: ${error.message}`);
 				// Store error state so we don't retry
 				channelDetailsMap.set(channelId, { error: error.message });
+				enrichedCount++;
 			}
 		})
 	);

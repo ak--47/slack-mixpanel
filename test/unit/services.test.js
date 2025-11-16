@@ -132,9 +132,7 @@ describe('Service Tests', () => {
           return;
         }
 
-        const channelDetails = await slack.getChannelDetails(testChannel.id, {
-          include_num_members: true
-        });
+        const channelDetails = await slack.getChannelDetails(testChannel.id);
 
         expect(channelDetails.channel).toHaveProperty('num_members');
         expect(typeof channelDetails.channel.num_members).toBe('number');
@@ -244,7 +242,7 @@ describe('Service Tests', () => {
         };
 
         const options = {
-          recordType: 'event',
+          recordType: /** @type {any} */ ('event'),
           logs: false,
           compress: false,
           abridged: false
@@ -256,8 +254,11 @@ describe('Service Tests', () => {
           expect(result).toBeDefined();
 
           // mixpanel-import returns detailed results
+          // @ts-ignore - recordsImported may not be in type definition
           if (result.recordsImported !== undefined) {
+            // @ts-ignore - recordsImported may not be in type definition
             expect(result.recordsImported).toBeGreaterThanOrEqual(0);
+            // @ts-ignore - recordsImported may not be in type definition
             console.log(`✅ Mixpanel import test: ${result.recordsImported} records imported`);
           } else {
             // Result structure might vary - just verify it succeeded
@@ -300,7 +301,7 @@ describe('Service Tests', () => {
         };
 
         const options = {
-          recordType: 'user',
+          recordType: /** @type {any} */ ('user'),
           logs: false,
           compress: false,
           abridged: false
@@ -312,8 +313,11 @@ describe('Service Tests', () => {
           expect(result).toBeDefined();
 
           // mixpanel-import returns detailed results
+          // @ts-ignore - recordsImported may not be in type definition
           if (result.recordsImported !== undefined) {
+            // @ts-ignore - recordsImported may not be in type definition
             expect(result.recordsImported).toBeGreaterThanOrEqual(0);
+            // @ts-ignore - recordsImported may not be in type definition
             console.log(`✅ Mixpanel profile test: ${result.recordsImported} profiles imported`);
           } else {
             // Result structure might vary - just verify it succeeded
@@ -346,7 +350,7 @@ describe('Service Tests', () => {
         };
 
         const options = {
-          recordType: 'group',
+          recordType: /** @type {any} */ ('group'),
           groupKey: 'test_workspace_id',
           logs: false,
           compress: false,
@@ -359,8 +363,11 @@ describe('Service Tests', () => {
           expect(result).toBeDefined();
 
           // mixpanel-import returns detailed results
+          // @ts-ignore - recordsImported may not be in type definition
           if (result.recordsImported !== undefined) {
+            // @ts-ignore - recordsImported may not be in type definition
             expect(result.recordsImported).toBeGreaterThanOrEqual(0);
+            // @ts-ignore - recordsImported may not be in type definition
             console.log(`✅ Mixpanel group test: ${result.recordsImported} groups imported`);
           } else {
             // Result structure might vary - just verify it succeeded

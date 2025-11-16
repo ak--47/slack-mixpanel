@@ -17,9 +17,9 @@ const { progress, sleep } = akTools;
 /**
  * @typedef {Object} SlackAuthResponse
  * @property {boolean} ok - Whether the auth test was successful
- * @property {string} user - User ID
- * @property {string} team - Team ID
- * @property {string} url - Team URL
+ * @property {string} [user] - User ID (optional)
+ * @property {string} [team] - Team ID
+ * @property {string} [url] - Team URL
  */
 
 /**
@@ -34,36 +34,38 @@ const { progress, sleep } = akTools;
 
 /**
  * @typedef {Object} SlackChannel
- * @property {string} id - Channel ID
- * @property {string} name - Channel name
- * @property {boolean} is_private - Whether channel is private
- * @property {boolean} is_ext_shared - Whether channel is externally shared
- * @property {boolean} is_shared - Whether channel is shared
- * @property {number} created - Channel creation timestamp
- * @property {number} num_members - Number of channel members
- * @property {Object} purpose - Channel purpose object
- * @property {string} purpose.value - Channel purpose text
- * @property {Object} topic - Channel topic object
- * @property {string} topic.value - Channel topic text
+ * @property {string} [id] - Channel ID
+ * @property {string} [name] - Channel name
+ * @property {boolean} [is_private] - Whether channel is private
+ * @property {boolean} [is_archived] - Whether channel is archived
+ * @property {boolean} [is_ext_shared] - Whether channel is externally shared
+ * @property {boolean} [is_shared] - Whether channel is shared
+ * @property {number} [created] - Channel creation timestamp
+ * @property {number} [num_members] - Number of channel members
+ * @property {Object} [purpose] - Channel purpose object
+ * @property {string} [purpose.value] - Channel purpose text
+ * @property {Object} [topic] - Channel topic object
+ * @property {string} [topic.value] - Channel topic text
  */
 
 /**
  * @typedef {Object} SlackUser
- * @property {string} id - User ID
- * @property {string} real_name - User's real name
- * @property {boolean} deleted - Whether user is deleted
- * @property {Object} profile - User profile object
- * @property {string} profile.image_512 - Profile image URL
- * @property {string} profile.title - User title
- * @property {string} profile.display_name - Display name
+ * @property {string} [id] - User ID
+ * @property {string} [real_name] - User's real name
+ * @property {boolean} [deleted] - Whether user is deleted
+ * @property {boolean} [is_bot] - Whether user is a bot
+ * @property {Object} [profile] - User profile object
+ * @property {string} [profile.image_512] - Profile image URL
+ * @property {string} [profile.title] - User title
+ * @property {string} [profile.display_name] - Display name
  */
 
-const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = 1 } = process.env;
+const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = "1" } = process.env;
 
 if (!slack_bot_token) throw new Error('No slack_bot_token in environment variables');
 if (!slack_user_token) throw new Error('No slack_user_token in environment variables');
 
-const limit = pLimit(parseInt(CONCURRENCY));
+const limit = pLimit(parseInt(CONCURRENCY, 10));
 const initStartTime = Date.now();
 
 /** @type {WebClient} */
@@ -116,7 +118,7 @@ async function testAuth(clientType = 'bot') {
  * @param {string} [endDate] - End date in YYYY-MM-DD format (defaults to 2 days ago)
  * @param {('member'|'public_channel'|'private_channel')} [type='member'] - Analytics type to fetch
  * @param {boolean} [streamResult=true] - Whether to return Highland stream (true) or consolidated array (false)
- * @returns {Promise<Stream|SlackAnalyticsRecord[]>} Highland stream of analytics records or array of all records
+ * @returns {Promise<any|SlackAnalyticsRecord[]>} Highland stream of analytics records or array of all records
  * @throws {Error} When API calls fail (unless known errors like data_not_available)
  * @example
  * // Stream analytics data
@@ -283,11 +285,12 @@ async function getUsers() {
  * @property {string} ts - Message timestamp
  * @property {string} user - User ID who sent the message
  * @property {Object} channel - Channel information
- * @property {string} channel.id - Channel ID
- * @property {string} channel.name - Channel name
- * @property {Array} reactions - Array of reactions to the message
- * @property {number} reply_count - Number of replies to the message
- * @property {boolean} is_starred - Whether message is starred
+ * @property {string} [channel.id] - Channel ID
+ * @property {string} [channel.name] - Channel name
+ * @property {Array} [reactions] - Array of reactions to the message
+ * @property {number} [reply_count] - Number of replies to the message
+ * @property {boolean} [is_starred] - Whether message is starred
+ * @property {number} [reaction_count] - Total reaction count
  * @property {Object} permalink - Permanent link to the message
  * @property {number} score - Search relevance score
  */
@@ -353,6 +356,8 @@ async function getUserMessages(userId, options = {}) {
 				query,
 				count: searchLimit,
 				page,
+				sort: /** @type {'timestamp' | 'score'} */ ('timestamp'),
+				sort_dir: /** @type {'desc' | 'asc'} */ ('desc'),
 				...(oldest && { oldest }),
 				...(latest && { latest })
 			};
@@ -404,8 +409,11 @@ async function getUserMessages(userId, options = {}) {
 							}
 
 							// Additional analytics fields
+							// @ts-ignore - Properties may not be in type definition
 							processed.is_starred = detailedMessage.is_starred || false;
+							// @ts-ignore - Properties may not be in type definition
 							processed.pinned_to = detailedMessage.pinned_to || [];
+							// @ts-ignore - Properties may not be in type definition
 							processed.pinned_info = detailedMessage.pinned_info;
 						}
 
@@ -489,9 +497,11 @@ async function getUserMessageAnalytics(userId, options = {}) {
 	// Calculate aggregated metrics
 	messages.forEach(message => {
 		// Reaction metrics
+		// @ts-ignore - Properties may not be in type definition
 		const reactionCount = message.reaction_count || 0;
 		analytics.totalReactions += reactionCount;
 
+		// @ts-ignore - Properties may not be in type definition
 		if (!analytics.mostReactedMessage || reactionCount > (analytics.mostReactedMessage.reaction_count || 0)) {
 			analytics.mostReactedMessage = message;
 		}
@@ -535,9 +545,10 @@ async function getUserMessageAnalytics(userId, options = {}) {
  * @property {string} user - User ID who sent the message
  * @property {string} channel_id - Channel ID
  * @property {string} channel_name - Channel name
- * @property {Array} reactions - Array of reactions to the message
- * @property {number} reply_count - Number of replies to the message
- * @property {boolean} is_starred - Whether message is starred
+ * @property {Array} [reactions] - Array of reactions to the message
+ * @property {number} [reply_count] - Number of replies to the message
+ * @property {number} [reaction_count] - Total reaction count
+ * @property {boolean} [is_starred] - Whether message is starred
  * @property {string} permalink - Permanent link to the message
  */
 
@@ -614,6 +625,7 @@ async function getChannelMessages(channelId, options = {}) {
 					user: message.user,
 					channel_id: channelId,
 					channel_name: '', // Will be filled if we have channel info cached
+					// @ts-ignore - team.domain may not be in type definition
 					permalink: `https://${slackUserClient.team?.domain || 'workspace'}.slack.com/archives/${channelId}/p${message.ts.replace('.', '')}`
 				};
 
@@ -770,9 +782,11 @@ async function getChannelMessageAnalytics(channelId, options = {}) {
 		}
 
 		// Reaction metrics
+		// @ts-ignore - Properties may not be in type definition
 		const reactionCount = message.reaction_count || 0;
 		analytics.totalReactions += reactionCount;
 
+		// @ts-ignore - Properties may not be in type definition
 		if (!analytics.mostReactedMessage || reactionCount > (analytics.mostReactedMessage.reaction_count || 0)) {
 			analytics.mostReactedMessage = message;
 		}
