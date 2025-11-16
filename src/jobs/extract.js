@@ -112,11 +112,13 @@ async function enrichUserRecords(records, userDetailsMap) {
 	const usersToFetch = uncachedUserIds.slice(0, remainingSlots);
 	const skippedCount = uncachedUserIds.length - usersToFetch.length;
 
+	// Clear summary log
+	const cachedCount = uniqueUserIds.length - uncachedUserIds.length;
 	if (skippedCount > 0) {
-		logger.verbose(`[ENRICH] ⚠️  Limiting to ${usersToFetch.length} users (${skippedCount} skipped due to MAX_ENRICHMENT=${MAX_ENRICHMENT})`);
+		logger.info(`[ENRICH] Users: Found ${uniqueUserIds.length}, enriching ${usersToFetch.length} (${cachedCount} cached, ${skippedCount} skipped)`);
+	} else {
+		logger.info(`[ENRICH] Users: Found ${uniqueUserIds.length}, enriching ${usersToFetch.length} (${cachedCount} cached)`);
 	}
-
-	logger.verbose(`[ENRICH] Fetching details for ${usersToFetch.length} new users (${uniqueUserIds.length - uncachedUserIds.length} cached)`);
 
 	// Fetch user details with concurrency control (rate limiting)
 	const limit = pLimit(1); // Conservative: 1 concurrent request
@@ -229,11 +231,13 @@ async function enrichChannelRecords(records, channelDetailsMap) {
 	const channelsToFetch = uncachedChannelIds.slice(0, remainingSlots);
 	const skippedCount = uncachedChannelIds.length - channelsToFetch.length;
 
+	// Clear summary log
+	const cachedCount = uniqueChannelIds.length - uncachedChannelIds.length;
 	if (skippedCount > 0) {
-		logger.verbose(`[ENRICH] ⚠️  Limiting to ${channelsToFetch.length} channels (${skippedCount} skipped due to MAX_ENRICHMENT=${MAX_ENRICHMENT})`);
+		logger.info(`[ENRICH] Channels: Found ${uniqueChannelIds.length}, enriching ${channelsToFetch.length} (${cachedCount} cached, ${skippedCount} skipped)`);
+	} else {
+		logger.info(`[ENRICH] Channels: Found ${uniqueChannelIds.length}, enriching ${channelsToFetch.length} (${cachedCount} cached)`);
 	}
-
-	logger.verbose(`[ENRICH] Fetching details for ${channelsToFetch.length} new channels (${uniqueChannelIds.length - uncachedChannelIds.length} cached)`);
 
 	// Fetch channel details with concurrency control (rate limiting)
 	const limit = pLimit(1); // Conservative: 1 concurrent request
