@@ -15,8 +15,42 @@ dayjs.extend(utc);
 
 const { company_domain, NODE_ENV } = process.env;
 
-// Limit enrichment in dev/test modes for faster testing (1M in prod, 10 in dev/test)
-const MAX_ENRICHMENT = NODE_ENV === 'production' ? 1_000_000 : 10;
+/**
+ * MAX_ENRICHMENT controls how many entities to enrich per run.
+ *
+ * Strategy: Shuffle IDs before enriching to vary coverage across runs.
+ * Over time, all entities get enriched (slowly changing dimensions).
+ *
+ * Time estimates (based on Slack API rate limit tiers):
+ * - Users (Tier 4: ~667ms avg):
+ *   - 100 users ≈ 1.1 min
+ *   - 500 users ≈ 5.6 min
+ *   - 1000 users ≈ 11.1 min
+ *   - 5000 users ≈ 55.6 min
+ *
+ * - Channels (Tier 3: ~875ms avg):
+ *   - 100 channels ≈ 1.5 min
+ *   - 500 channels ≈ 7.3 min
+ *   - 1000 channels ≈ 14.6 min
+ *   - 4000 channels ≈ 58.3 min
+ *
+ * Example: MAX_ENRICHMENT=500 → ~13 min total (5.6 + 7.3)
+ * Full 4000 channel coverage in 8 runs (500 × 8 = 4000)
+ */
+const MAX_ENRICHMENT = NODE_ENV === 'production' ? 1000 : 10;
+
+/**
+ * Fisher-Yates shuffle algorithm to randomize array order
+ * @param {Array} array - Array to shuffle (modified in place)
+ * @returns {Array} The shuffled array
+ */
+function shuffleArray(array) {
+	for (let i = array.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[array[i], array[j]] = [array[j], array[i]];
+	}
+	return array;
+}
 
 /**
  * Enrich user analytics records with detailed user information
@@ -70,6 +104,9 @@ async function enrichUserRecords(records, userDetailsMap) {
 			ENRICHED: userDetailsMap.get(record.user_id) || null
 		}));
 	}
+
+	// Shuffle to vary which users get enriched each run (for slowly changing dimensions)
+	shuffleArray(uncachedUserIds);
 
 	// Limit to remaining slots
 	const usersToFetch = uncachedUserIds.slice(0, remainingSlots);
@@ -184,6 +221,9 @@ async function enrichChannelRecords(records, channelDetailsMap) {
 			ENRICHED: channelDetailsMap.get(record.channel_id) || null
 		}));
 	}
+
+	// Shuffle to vary which channels get enriched each run (for slowly changing dimensions)
+	shuffleArray(uncachedChannelIds);
 
 	// Limit to remaining slots
 	const channelsToFetch = uncachedChannelIds.slice(0, remainingSlots);
