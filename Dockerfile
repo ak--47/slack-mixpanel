@@ -22,5 +22,5 @@ EXPOSE 8080
 # Set environment to production by default
 ENV NODE_ENV=production
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application directly with node (not npm) to avoid npm SIGTERM error logs
+CMD ["node", "src/index.js"]
