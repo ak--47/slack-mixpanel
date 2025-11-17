@@ -1,4 +1,5 @@
 # Dependencies
+scratch.mjs
 node_modules/
 npm-debug.log*
 yarn-debug.log*

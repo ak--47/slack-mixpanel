@@ -3,6 +3,16 @@
  * @module SlackService
  */
 
+/**
+ * @typedef {import('../../types.js').SlackAuthResponse} SlackAuthResponse
+ * @typedef {import('../../types.js').SlackAnalyticsRecord} SlackAnalyticsRecord
+ * @typedef {import('../../types.js').SlackChannel} SlackChannel
+ * @typedef {import('../../types.js').SlackUser} SlackUser
+ * @typedef {import('../../types.js').UserMessage} UserMessage
+ * @typedef {import('../../types.js').ChannelMessage} ChannelMessage
+ * @typedef {import('../../types.js').SlackService} SlackService
+ */
+
 import { WebClient } from '@slack/web-api';
 import 'dotenv/config';
 import _ from 'highland';
@@ -13,52 +23,6 @@ import pLimit from 'p-limit';
 
 dayjs.extend(utc);
 const { progress, sleep } = akTools;
-
-/**
- * @typedef {Object} SlackAuthResponse
- * @property {boolean} ok - Whether the auth test was successful
- * @property {string} [user] - User ID (optional)
- * @property {string} [team] - Team ID
- * @property {string} [url] - Team URL
- */
-
-/**
- * @typedef {Object} SlackAnalyticsRecord
- * @property {string} date - Date in YYYY-MM-DD format
- * @property {string} user_id - Slack user ID
- * @property {string} email_address - User email address
- * @property {string} team_id - Slack team ID
- * @property {number} messages_posted - Number of messages posted
- * @property {number} files_uploaded - Number of files uploaded
- */
-
-/**
- * @typedef {Object} SlackChannel
- * @property {string} [id] - Channel ID
- * @property {string} [name] - Channel name
- * @property {boolean} [is_private] - Whether channel is private
- * @property {boolean} [is_archived] - Whether channel is archived
- * @property {boolean} [is_ext_shared] - Whether channel is externally shared
- * @property {boolean} [is_shared] - Whether channel is shared
- * @property {number} [created] - Channel creation timestamp
- * @property {number} [num_members] - Number of channel members
- * @property {Object} [purpose] - Channel purpose object
- * @property {string} [purpose.value] - Channel purpose text
- * @property {Object} [topic] - Channel topic object
- * @property {string} [topic.value] - Channel topic text
- */
-
-/**
- * @typedef {Object} SlackUser
- * @property {string} [id] - User ID
- * @property {string} [real_name] - User's real name
- * @property {boolean} [deleted] - Whether user is deleted
- * @property {boolean} [is_bot] - Whether user is a bot
- * @property {Object} [profile] - User profile object
- * @property {string} [profile.image_512] - Profile image URL
- * @property {string} [profile.title] - User title
- * @property {string} [profile.display_name] - Display name
- */
 
 const { slack_bot_token, slack_user_token, NODE_ENV = "unknown", CONCURRENCY = "1" } = process.env;
 
@@ -315,23 +279,6 @@ async function getUsers() {
 }
 
 /**
- * @typedef {Object} UserMessage
- * @property {string} type - Message type
- * @property {string} text - Message text content
- * @property {string} ts - Message timestamp
- * @property {string} user - User ID who sent the message
- * @property {Object} channel - Channel information
- * @property {string} [channel.id] - Channel ID
- * @property {string} [channel.name] - Channel name
- * @property {Array} [reactions] - Array of reactions to the message
- * @property {number} [reply_count] - Number of replies to the message
- * @property {boolean} [is_starred] - Whether message is starred
- * @property {number} [reaction_count] - Total reaction count
- * @property {Object} permalink - Permanent link to the message
- * @property {number} score - Search relevance score
- */
-
-/**
  * Get all messages for a specific user with optional filtering
  * @param {string} userId - The Slack user ID to get messages for
  * @param {Object} [options] - Optional filtering parameters
@@ -574,21 +521,6 @@ async function getUserMessageAnalytics(userId, options = {}) {
 
 	return analytics;
 }
-
-/**
- * @typedef {Object} ChannelMessage
- * @property {string} type - Message type
- * @property {string} text - Message text content
- * @property {string} ts - Message timestamp
- * @property {string} user - User ID who sent the message
- * @property {string} channel_id - Channel ID
- * @property {string} channel_name - Channel name
- * @property {Array} [reactions] - Array of reactions to the message
- * @property {number} [reply_count] - Number of replies to the message
- * @property {number} [reaction_count] - Total reaction count
- * @property {boolean} [is_starred] - Whether message is starred
- * @property {string} permalink - Permanent link to the message
- */
 
 /**
  * Get all messages for a specific channel with optional filtering
@@ -890,26 +822,7 @@ function ensureSlackInitialized() {
 // Start initialization immediately but don't await it (non-blocking)
 ensureSlackInitialized();
 
-/**
- * @typedef {Object} SlackService
- * @property {string} name - Service name
- * @property {string} description - Service description
- * @property {WebClient} slackBotClient - Bot client instance
- * @property {WebClient} slackUserClient - User client instance
- * @property {SlackAuthResponse} userAuth - User authentication response
- * @property {SlackAuthResponse} botAuth - Bot authentication response
- * @property {boolean} ready - Whether service is ready
- * @property {Function} analytics - Analytics data fetcher
- * @property {Function} getChannels - Channels fetcher
- * @property {Function} getUsers - Users fetcher
- * @property {Function} getUserDetails - User details fetcher (info + profile)
- * @property {Function} getChannelDetails - Channel details fetcher
- * @property {Function} getUserMessages - User messages fetcher
- * @property {Function} getUserMessageAnalytics - User message analytics calculator
- * @property {Function} getChannelMessages - Channel messages fetcher
- * @property {Function} getChannelMessageAnalytics - Channel message analytics calculator
- * @property {Function} testAuth - Auth tester
- */
+/** @type {SlackService} */
 const slackService = {
 	name: 'slack-service',
 	description: 'Service for interacting with Slack API',
