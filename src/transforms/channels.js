@@ -93,8 +93,10 @@ export function transformChannelProfile(record, context) {
 	if (Object.keys(enrichedFields).length > 1) debugger;
 	// Add channel details if available from the lookup
 	if (channelDetails) {
-		enrichedFields.$name = `#${channelDetails.name}`;
-		enrichedFields.channel_name = `${channelDetails.name}`;
+		// Ensure channel name has # prefix (but don't double-prefix if it already has one)
+		const channelName = channelDetails.name || '';
+		enrichedFields.$name = channelName.startsWith('#') ? channelName : `#${channelName}`;
+		enrichedFields.channel_name = channelName.replace(/^#/, ''); // Always store without # prefix
 		enrichedFields['#  → SLACK'] = `${slack_prefix}/${record.channel_id}`;
 		enrichedFields.$email = `${slack_prefix}/${record.channel_id}`;
 		enrichedFields.created = dayjs.unix(channelDetails.created).format('YYYY-MM-DD');
