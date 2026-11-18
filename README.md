@@ -92,6 +92,8 @@ For cloud deployments and webhook integrations.
 curl -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" "$SERVICE_URL/mixpanel-all?days=1"
 ```
 
+**Failure alerts:** The service posts to a Slack webhook when a pipeline request fails (500) or a Mixpanel upload still fails after all retries. Cloud Build injects the webhook as `slack_failure_webhook` from Secret Manager secret `slack-mixpanel-failure-webhook`. Never commit the webhook URL; this repo is public. If the variable is unset, the service logs a warning and sends no alert.
+
 **Health Check:**
 ```bash
 GET /         # Service status and endpoint list
