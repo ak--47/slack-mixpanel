@@ -85,7 +85,12 @@ node scripts/run-all-backfill.js
 
 ### HTTP API Endpoints
 
-For cloud deployments and webhook integrations:
+For cloud deployments and webhook integrations.
+
+**Access:** The Cloud Run service is private (`--no-allow-unauthenticated`). Callers need `roles/run.invoker` and must send an identity token. Cloud Scheduler uses an OIDC token. For a manual run:
+```bash
+curl -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" "$SERVICE_URL/mixpanel-all?days=1"
+```
 
 **Health Check:**
 ```bash
