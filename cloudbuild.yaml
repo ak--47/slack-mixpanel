@@ -36,6 +36,8 @@ steps:
       - '--set-env-vars=slack_user_token=${_SLACK_USER_TOKEN}'
       - '--set-env-vars=mixpanel_token=${_MIXPANEL_TOKEN}'
       - '--set-env-vars=mixpanel_secret=${_MIXPANEL_SECRET}'
+      # Failure alerts: Slack webhook from Secret Manager (never committed; repo is public)
+      - '--set-secrets=slack_failure_webhook=slack-mixpanel-failure-webhook:latest'
 
 # Substitution variables (defaults, override via deploy.sh)
 substitutions:

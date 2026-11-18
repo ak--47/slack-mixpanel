@@ -5,6 +5,7 @@ import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import logger from './utils/logger.js';
+import { notifyFailure, loadFailures } from './services/alert.js';
 
 dotenv.config();
 dayjs.extend(utc);
@@ -163,6 +164,11 @@ app.post('/mixpanel-members', async (req, res) => {
 
 		logger.summary(`FINISH JOB: slack-members ... ${t.end()}`, { result, timing: t.report(false) });
 
+		const failures = loadFailures(result);
+		if (failures.length > 0) {
+			await notifyFailure('members', `Mixpanel upload failed after retries:\n${failures.join('\n')}`);
+		}
+
 		res.status(200).json({
 			status: 'success',
 			pipeline: 'members',
@@ -175,6 +181,10 @@ app.post('/mixpanel-members', async (req, res) => {
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
+
+		if (!isValidationError) {
+			await notifyFailure('members', error.stack || error.message);
+		}
 
 		res.status(isValidationError ? 400 : 500).json({
 			status: 'error',
@@ -203,6 +213,11 @@ app.post('/mixpanel-channels', async (req, res) => {
 
 		logger.summary(`FINISH JOB: slack-channels ... ${t.end()}`, { result, timing: t.report(false) });
 
+		const failures = loadFailures(result);
+		if (failures.length > 0) {
+			await notifyFailure('channels', `Mixpanel upload failed after retries:\n${failures.join('\n')}`);
+		}
+
 		res.status(200).json({
 			status: 'success',
 			pipeline: 'channels',
@@ -215,6 +230,10 @@ app.post('/mixpanel-channels', async (req, res) => {
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
+
+		if (!isValidationError) {
+			await notifyFailure('channels', error.stack || error.message);
+		}
 
 		res.status(isValidationError ? 400 : 500).json({
 			status: 'error',
@@ -243,6 +262,11 @@ app.post('/mixpanel-all', async (req, res) => {
 
 		logger.summary(`FINISH JOB: slack-all ... ${t.end()}`, { result, timing: t.report(false) });
 
+		const failures = loadFailures(result);
+		if (failures.length > 0) {
+			await notifyFailure('all', `Mixpanel upload failed after retries:\n${failures.join('\n')}`);
+		}
+
 		res.status(200).json({
 			status: 'success',
 			pipeline: 'all',
@@ -255,6 +279,10 @@ app.post('/mixpanel-all', async (req, res) => {
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
+
+		if (!isValidationError) {
+			await notifyFailure('all', error.stack || error.message);
+		}
 
 		res.status(isValidationError ? 400 : 500).json({
 			status: 'error',
