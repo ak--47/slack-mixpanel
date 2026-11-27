@@ -5,7 +5,7 @@ import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import logger from './utils/logger.js';
-import { notifyFailure, loadFailures } from './services/alert.js';
+import { notifyFailure, loadFailures, markAlertHandled, installCrashAlerts } from './services/alert.js';
 
 dotenv.config();
 dayjs.extend(utc);
@@ -110,6 +110,9 @@ if (NODE_ENV === 'dev') {
 	process.on('unhandledRejection', (e, p) => {
 		logger.error('Unhandled Rejection:', e);
 	});
+} else {
+	// Production only; alert-only (see installCrashAlerts for why it never exits).
+	installCrashAlerts({ log: logger.error });
 }
 
 // Health check endpoints
@@ -177,13 +180,15 @@ app.post('/mixpanel-members', async (req, res) => {
 		});
 
 	} catch (error) {
+		// This handler owns the alert below (400s never alert).
+		markAlertHandled(error);
 		logger.error('ERROR JOB: slack-members', error);
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
 
 		if (!isValidationError) {
-			await notifyFailure('members', error.stack || error.message);
+			await notifyFailure('members', error, { status: 500 });
 		}
 
 		res.status(isValidationError ? 400 : 500).json({
@@ -226,13 +231,15 @@ app.post('/mixpanel-channels', async (req, res) => {
 		});
 
 	} catch (error) {
+		// This handler owns the alert below (400s never alert).
+		markAlertHandled(error);
 		logger.error('ERROR JOB: slack-channels', error);
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
 
 		if (!isValidationError) {
-			await notifyFailure('channels', error.stack || error.message);
+			await notifyFailure('channels', error, { status: 500 });
 		}
 
 		res.status(isValidationError ? 400 : 500).json({
@@ -275,13 +282,15 @@ app.post('/mixpanel-all', async (req, res) => {
 		});
 
 	} catch (error) {
+		// This handler owns the alert below (400s never alert).
+		markAlertHandled(error);
 		logger.error('ERROR JOB: slack-all', error);
 
 		// Handle parameter validation errors with 400 status
 		const isValidationError = error.message.includes('Parameter') || error.message.includes('mutually exclusive');
 
 		if (!isValidationError) {
-			await notifyFailure('all', error.stack || error.message);
+			await notifyFailure('all', error, { status: 500 });
 		}
 
 		res.status(isValidationError ? 400 : 500).json({

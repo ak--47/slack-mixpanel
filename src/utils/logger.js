@@ -3,6 +3,8 @@
  * @module Logger
  */
 
+import { alertFromLog } from '../services/alert.js';
+
 const { NODE_ENV = "unknown" } = process.env;
 const IS_PRODUCTION = NODE_ENV === "production";
 
@@ -42,9 +44,19 @@ export const logger = {
 	},
 
 	/**
-	 * Log errors (always shown, red in dev)
+	 * Log errors (always shown, red in dev). Also routed to the Slack failure
+	 * webhook (production on Cloud Run only; deduped and capped in alert.js).
 	 */
 	error: (...args) => {
+		console.error(colorize(colors.red, ...args));
+		alertFromLog(args);
+	},
+
+	/**
+	 * Log an error without a Slack alert: for errors a caller reports itself
+	 * (e.g. upload stages that notifyFailure posts once per request).
+	 */
+	errorNoAlert: (...args) => {
 		console.error(colorize(colors.red, ...args));
 	},
 

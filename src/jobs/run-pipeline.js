@@ -9,6 +9,7 @@ import { extractMemberAnalytics, extractChannelAnalytics } from './extract.js';
 import { loadMemberAnalytics, loadChannelAnalytics } from './load.js';
 import slackService from '../services/slack.js';
 import logger from '../utils/logger.js';
+import { markAlertHandled } from '../services/alert.js';
 import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
@@ -247,6 +248,8 @@ export async function runPipeline(options = {}) {
 		return result;
 
 	} catch (error) {
+		// The HTTP handler that called us alerts on this error with its route.
+		markAlertHandled(error);
 		logger.error('PIPELINE ERROR:', error);
 		throw error;
 	}

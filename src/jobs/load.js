@@ -97,7 +97,8 @@ async function uploadBatch(files, options) {
 
 		} catch (error) {
 			lastError = error;
-			logger.error(`[MIXPANEL] ❌ ${typeLabel}: ${error.message}`);
+			// No Slack post here: index.js alerts once per request via loadFailures + notifyFailure.
+			logger.errorNoAlert(`[MIXPANEL] ❌ ${typeLabel}: ${error.message}`);
 
 			if (attempt < maxRetries) {
 				const delay = attempt * 2000; // Exponential backoff: 2s, 4s, 6s
@@ -153,7 +154,7 @@ export async function loadMemberAnalytics(files, context, options = {}) {
 	results.events.result = eventsResult.result; // Full mixpanel-import response
 
 	if (!eventsResult.success) {
-		logger.error(`[LOAD] ⚠️  Events upload failed, skipping profiles`);
+		logger.errorNoAlert(`[LOAD] ⚠️  Events upload failed, skipping profiles`);
 		return {
 			uploaded: 0,
 			failed: totalFiles * 2, // events + profiles
@@ -251,7 +252,7 @@ export async function loadChannelAnalytics(files, context, options = {}) {
 	results.events.result = eventsResult.result; // Full mixpanel-import response
 
 	if (!eventsResult.success) {
-		logger.error(`[LOAD] ⚠️  Events upload failed, skipping group profiles`);
+		logger.errorNoAlert(`[LOAD] ⚠️  Events upload failed, skipping group profiles`);
 		return {
 			uploaded: 0,
 			failed: totalFiles * 2, // events + profiles
