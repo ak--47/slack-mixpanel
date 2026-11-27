@@ -260,10 +260,11 @@ export function normalizeTitle(line) {
  * behavior. mixpanel-import (loaded by src/jobs/load.js) installs its own
  * handlers: a log-only `unhandledRejection` (the service survives) and an
  * `uncaughtException` that logs and calls process.exit(1) synchronously.
- * - unhandledRejection: log + alert, never exit.
- * - uncaughtException: prepended so it runs before mixpanel-import's exit.
- *   Best effort: the POST is started but the process may exit before it lands.
- * @param {{log: (...args: unknown[]) => void, nodeEnv?: string, proc?: NodeJS.EventEmitter}} o
+ * - unhandledRejection: log + alert; survives while another listener (mixpanel-import's)
+ *   is present, else flushes and exits 1 like Node's default.
+ * - uncaughtException: prepended so it runs before mixpanel-import's exit (best effort:
+ *   the POST may not land); exits 1 itself only if it is the only listener.
+ * @param {{log: (...args: unknown[]) => void, nodeEnv?: string, proc?: NodeJS.EventEmitter, exit?: (code: number) => void}} o
  * @returns {boolean} true if handlers were installed
  */
 export function installCrashAlerts({ log, nodeEnv = process.env.NODE_ENV, proc = process, exit = (code) => process.exit(code) }) {
@@ -276,7 +277,8 @@ export function installCrashAlerts({ log, nodeEnv = process.env.NODE_ENV, proc =
 	const crashIfAlone = (event) => {
 		if (proc.listenerCount(event) <= 1) flushAlerts().finally(() => exit(1));
 	};
-	proc.on('unhandledRejection', (reason) => {
+	// prepended so a once() listener elsewhere can't have removed itself before we count
+	proc.prependListener('unhandledRejection', (reason) => {
 		log('Unhandled Rejection:', reason);
 		crashIfAlone('unhandledRejection');
 	});
