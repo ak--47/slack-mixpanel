@@ -110,11 +110,13 @@ function admit(input, now) {
 		service: SERVICE_NAME,
 		atMs: now,
 		notes,
+		// This service logs plain text to stderr, which Cloud Run stores with no
+		// severity, so the standard `severity>=ERROR` clause would match nothing.
 		logsUrl: logsExplorerUrl({
 			project: GCP_PROJECT,
 			service: process.env.K_SERVICE || DEFAULT_CLOUD_RUN_SERVICE,
 			atMs: now
-		})
+		}).replace(encodeURIComponent('\nseverity>=ERROR'), '')
 	});
 }
 
@@ -264,10 +266,24 @@ export function normalizeTitle(line) {
  * @param {{log: (...args: unknown[]) => void, nodeEnv?: string, proc?: NodeJS.EventEmitter}} o
  * @returns {boolean} true if handlers were installed
  */
-export function installCrashAlerts({ log, nodeEnv = process.env.NODE_ENV, proc = process }) {
+export function installCrashAlerts({ log, nodeEnv = process.env.NODE_ENV, proc = process, exit = (code) => process.exit(code) }) {
 	if (nodeEnv !== 'production') return false;
-	proc.on('unhandledRejection', (reason) => { log('Unhandled Rejection:', reason); });
-	proc.prependListener('uncaughtException', (error) => { log('Uncaught Exception:', error); });
+	// Never change whether the process survives. Today mixpanel-import (<3.5.1)
+	// adds its own listeners: a log-only unhandledRejection (survive) and an
+	// exiting uncaughtException. If ours is the only listener when the event
+	// fires (e.g. after a mixpanel-import upgrade), registering it would have
+	// suppressed Node's default crash — so crash ourselves, after the alert.
+	const crashIfAlone = (event) => {
+		if (proc.listenerCount(event) <= 1) flushAlerts().finally(() => exit(1));
+	};
+	proc.on('unhandledRejection', (reason) => {
+		log('Unhandled Rejection:', reason);
+		crashIfAlone('unhandledRejection');
+	});
+	proc.prependListener('uncaughtException', (error) => {
+		log('Uncaught Exception:', error);
+		crashIfAlone('uncaughtException');
+	});
 	return true;
 }
 
