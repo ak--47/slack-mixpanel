@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   notifyFailure, loadFailures, alertFromLog, markAlertHandled, flushAlerts,
-  logAlertsEnabled, _resetAlertsForTests, CAP_PER_HOUR
+  logAlertsEnabled, _resetAlertsForTests, CAP_PER_HOUR, installCrashAlerts, normalizeTitle
 } from '../../src/services/alert.js';
+import logger from '../../src/utils/logger.js';
+import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { formatAlert } from '../../src/utils/alert-format.js';
 
 const HOOK = 'https://hooks.example.test/abc';
@@ -181,11 +184,104 @@ describe('alert service', () => {
 
     const texts = bodies(fetchMock);
     expect(texts).toHaveLength(2);
-    expect(texts[0]).toContain(':rotating_light: *Slack Mixpanel — [EXTRACT] 3/5 ❌ 2026-11-20: rate limited*');
+    expect(texts[0]).toContain(':rotating_light: *Slack Mixpanel — [EXTRACT] 3/5 ❌ rate limited*');
     expect(texts[0]).toContain('*WHAT:* EXTRACT\n');
     expect(texts[1]).toContain(':rotating_light: *Slack Mixpanel — Uncaught Exception: kaboom*');
     expect(texts[1]).toContain('> Error: kaboom');
     expect(texts[1]).toMatch(/\*WHERE:\* test\/unit\/alert\.test\.js @ \d+/);
+  });
+
+  describe('review fixes', () => {
+    /** @param {any} fetchMock */
+    function prodOnCloudRun(fetchMock) {
+      process.env.slack_failure_webhook = HOOK;
+      process.env.NODE_ENV = 'production';
+      process.env.K_SERVICE = 'slack-mixpanel-analytics';
+      vi.stubGlobal('fetch', fetchMock);
+    }
+
+    it('installs crash alerts only when NODE_ENV is production', () => {
+      for (const nodeEnv of ['dev', 'test', 'unknown', undefined]) {
+        const proc = new EventEmitter();
+        expect(installCrashAlerts({ log: () => {}, nodeEnv, proc })).toBe(false);
+        expect(proc.listenerCount('unhandledRejection')).toBe(0);
+        expect(proc.listenerCount('uncaughtException')).toBe(0);
+      }
+      const proc = new EventEmitter();
+      expect(installCrashAlerts({ log: () => {}, nodeEnv: 'production', proc })).toBe(true);
+      expect(proc.listenerCount('unhandledRejection')).toBe(1);
+      expect(proc.listenerCount('uncaughtException')).toBe(1);
+    });
+
+    it('unhandledRejection logs + alerts and never exits', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      prodOnCloudRun(fetchMock);
+      const exit = vi.spyOn(process, 'exit').mockImplementation(/** @type {any} */ (() => {}));
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const proc = new EventEmitter();
+      installCrashAlerts({ log: logger.error, nodeEnv: 'production', proc });
+
+      proc.emit('unhandledRejection', new Error('slack auth.test failed'), Promise.resolve());
+      await flushAlerts();
+
+      expect(exit).not.toHaveBeenCalled();
+      expect(bodies(fetchMock)[0]).toContain(':rotating_light: *Slack Mixpanel — Unhandled Rejection: slack auth.test failed*');
+      exit.mockRestore();
+      err.mockRestore();
+    });
+
+    it('uncaughtException alert runs before an existing exiting listener', () => {
+      const order = [];
+      const proc = new EventEmitter();
+      proc.on('uncaughtException', () => order.push('mixpanel-import exit'));
+      installCrashAlerts({ log: () => order.push('alert'), nodeEnv: 'production', proc });
+      proc.emit('uncaughtException', new Error('x'));
+      expect(order).toEqual(['alert', 'mixpanel-import exit']);
+    });
+
+    it('errorNoAlert logs but does not post; load.js upload errors use it', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      prodOnCloudRun(fetchMock);
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      logger.errorNoAlert('[MIXPANEL] ❌ Events: bad creds');
+      await flushAlerts();
+      expect(err).toHaveBeenCalledOnce();
+      expect(fetchMock).not.toHaveBeenCalled();
+      logger.error('[MIXPANEL] ❌ Events: bad creds');
+      await flushAlerts();
+      expect(fetchMock).toHaveBeenCalledOnce();
+      err.mockRestore();
+
+      const loadSrc = readFileSync(new URL('../../src/jobs/load.js', import.meta.url), 'utf8');
+      expect(loadSrc).not.toMatch(/logger\.error\(/);
+    });
+
+    it('normalizes extract progress + date out of the title and dedupes an outage', async () => {
+      expect(normalizeTitle('[EXTRACT] [3/30] ❌ 2026-11-20: rate limited')).toBe('[EXTRACT] ❌ rate limited');
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      prodOnCloudRun(fetchMock);
+      for (let i = 1; i <= 30; i++) {
+        alertFromLog([`[EXTRACT] [${i}/30] ❌ 2026-11-${String(i).padStart(2, '0')}: rate limited`]);
+      }
+      await flushAlerts();
+      const texts = bodies(fetchMock);
+      expect(texts).toHaveLength(1);
+      expect(texts[0]).toContain(':rotating_light: *Slack Mixpanel — [EXTRACT] ❌ rate limited*');
+      expect(texts[0]).toContain('*WHY:*\n> [EXTRACT] [1/30] ❌ 2026-11-01: rate limited');
+    });
+
+    it('never serializes non-Error objects into Slack', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      prodOnCloudRun(fetchMock);
+      class AxiosLikeError { constructor() { this.config = { headers: { Authorization: 'Bearer sekrit' } }; } }
+      alertFromLog(['Unhandled Rejection:', new AxiosLikeError()]);
+      alertFromLog(['[X] plain', { token: 'sekrit2' }]);
+      await flushAlerts();
+      const all = bodies(fetchMock).join('\n');
+      expect(all).not.toMatch(/sekrit|Authorization|token/);
+      expect(all).toContain('Unhandled Rejection: [AxiosLikeError]');
+      expect(all).toContain('[X] plain [Object]');
+    });
   });
 
   it('lists load stages that failed after retries', () => {

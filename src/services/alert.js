@@ -205,17 +205,20 @@ export function alertFromLog(args) {
 		if (err && handled.has(err)) return;
 		const text = args
 			.filter(a => !(a instanceof Error))
-			.map(a => (typeof a === 'string' ? a : safeJson(a)))
+			.map(describeArg)
 			.join(' ')
 			.trim();
 		const [first = '', ...rest] = text.split('\n');
-		const title = [first.trim(), err?.message?.split('\n')[0]].filter(Boolean).join(' ') || 'error';
 		const tag = first.match(/^\[([^\]]+)\]/);
+		const normalized = normalizeTitle(first);
+		const title = [normalized, err?.message?.split('\n')[0]].filter(Boolean).join(' ') || 'error';
+		// The un-normalized line (progress counter, date) stays in WHY.
+		const detail = [normalized !== first.trim() ? first.trim() : '', ...rest].filter(Boolean).join('\n');
 		if (err) markAlertHandled(err);
 		const out = admit({
 			title,
 			component: tag ? tag[1] : undefined,
-			detail: rest.join('\n') || undefined,
+			detail: detail || undefined,
 			stack: err?.stack
 		}, Date.now());
 		if (out) track(post(/** @type {string} */ (process.env.slack_failure_webhook), out));
@@ -224,9 +227,48 @@ export function alertFromLog(args) {
 	}
 }
 
-/** @param {unknown} v */
-function safeJson(v) {
-	try { return JSON.stringify(v); } catch { return String(v); }
+/**
+ * Text for a non-Error log argument. Objects are named by constructor only, so
+ * a rejection reason or response object cannot put its contents (headers,
+ * config, tokens) into Slack. The full value stays in Cloud Logging.
+ * @param {unknown} v
+ */
+function describeArg(v) {
+	if (typeof v === 'string') return v;
+	if (v === null || typeof v !== 'object') return String(v);
+	const name = /** @type {any} */ (v).constructor?.name || 'Object';
+	return `[${name}]`;
+}
+
+/**
+ * Drop per-item noise from a log line so one outage dedupes to one key:
+ * a `[n/N]` progress counter and ISO dates (`2026-11-20`, with a trailing ':').
+ * @param {string} line
+ */
+export function normalizeTitle(line) {
+	return line
+		.replace(/\s*\[\d+\/\d+\]/g, '')
+		.replace(/\s*\d{4}-\d{2}-\d{2}:?/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+/**
+ * Production-only crash alerts. Alert only: the process keeps today's
+ * behavior. mixpanel-import (loaded by src/jobs/load.js) installs its own
+ * handlers: a log-only `unhandledRejection` (the service survives) and an
+ * `uncaughtException` that logs and calls process.exit(1) synchronously.
+ * - unhandledRejection: log + alert, never exit.
+ * - uncaughtException: prepended so it runs before mixpanel-import's exit.
+ *   Best effort: the POST is started but the process may exit before it lands.
+ * @param {{log: (...args: unknown[]) => void, nodeEnv?: string, proc?: NodeJS.EventEmitter}} o
+ * @returns {boolean} true if handlers were installed
+ */
+export function installCrashAlerts({ log, nodeEnv = process.env.NODE_ENV, proc = process }) {
+	if (nodeEnv !== 'production') return false;
+	proc.on('unhandledRejection', (reason) => { log('Unhandled Rejection:', reason); });
+	proc.prependListener('uncaughtException', (error) => { log('Uncaught Exception:', error); });
+	return true;
 }
 
 /**

@@ -5,7 +5,7 @@ import * as akTools from 'ak-tools';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import logger from './utils/logger.js';
-import { notifyFailure, loadFailures, markAlertHandled, flushAlerts } from './services/alert.js';
+import { notifyFailure, loadFailures, markAlertHandled, installCrashAlerts } from './services/alert.js';
 
 dotenv.config();
 dayjs.extend(utc);
@@ -111,18 +111,8 @@ if (NODE_ENV === 'dev') {
 		logger.error('Unhandled Rejection:', e);
 	});
 } else {
-	// Same crash as Node's default, but the ERROR log reaches Slack first.
-	process.on('uncaughtException', async (e) => {
-		logger.error('Uncaught Exception:', e);
-		await flushAlerts();
-		process.exit(1);
-	});
-
-	process.on('unhandledRejection', async (e) => {
-		logger.error('Unhandled Rejection:', e);
-		await flushAlerts();
-		process.exit(1);
-	});
+	// Production only; alert-only (see installCrashAlerts for why it never exits).
+	installCrashAlerts({ log: logger.error });
 }
 
 // Health check endpoints

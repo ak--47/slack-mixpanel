@@ -53,6 +53,14 @@ export const logger = {
 	},
 
 	/**
+	 * Log an error without a Slack alert: for errors a caller reports itself
+	 * (e.g. upload stages that notifyFailure posts once per request).
+	 */
+	errorNoAlert: (...args) => {
+		console.error(colorize(colors.red, ...args));
+	},
+
+	/**
 	 * Log verbose/detailed information (hidden in production, dim in dev)
 	 */
 	verbose: (...args) => {
