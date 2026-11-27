@@ -111,7 +111,8 @@ if (NODE_ENV === 'dev') {
 		logger.error('Unhandled Rejection:', e);
 	});
 } else {
-	// Production only; alert-only (see installCrashAlerts for why it never exits).
+	// Production only: alert on crashes without changing whether the process survives
+	// (see installCrashAlerts).
 	installCrashAlerts({ log: logger.error });
 }
 

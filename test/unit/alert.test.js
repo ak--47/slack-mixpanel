@@ -219,6 +219,8 @@ describe('alert service', () => {
       const exit = vi.spyOn(process, 'exit').mockImplementation(/** @type {any} */ (() => {}));
       const err = vi.spyOn(console, 'error').mockImplementation(() => {});
       const proc = new EventEmitter();
+      // mixpanel-import@3.1.x's own log-only listener, as in production today
+      proc.on('unhandledRejection', () => {});
       installCrashAlerts({ log: logger.error, nodeEnv: 'production', proc });
 
       proc.emit('unhandledRejection', new Error('slack auth.test failed'), Promise.resolve());
@@ -228,6 +230,41 @@ describe('alert service', () => {
       expect(bodies(fetchMock)[0]).toContain(':rotating_light: *Slack Mixpanel — Unhandled Rejection: slack auth.test failed*');
       exit.mockRestore();
       err.mockRestore();
+    });
+
+    it('does not exit while another listener owns the outcome (mixpanel-import today)', async () => {
+      const exit = vi.fn();
+      const proc = new EventEmitter();
+      proc.on('unhandledRejection', () => {});
+      proc.on('uncaughtException', () => {});
+      installCrashAlerts({ log: () => {}, nodeEnv: 'production', proc, exit });
+      proc.emit('unhandledRejection', new Error('r'), Promise.resolve());
+      proc.emit('uncaughtException', new Error('x'));
+      await flushAlerts();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(exit).not.toHaveBeenCalled();
+    });
+
+    it('exits 1 when it is the only listener (keeps Node default crash semantics)', async () => {
+      for (const event of ['unhandledRejection', 'uncaughtException']) {
+        const exit = vi.fn();
+        const proc = new EventEmitter();
+        installCrashAlerts({ log: () => {}, nodeEnv: 'production', proc, exit });
+        proc.emit(event, new Error('alone'), Promise.resolve());
+        await flushAlerts();
+        await new Promise((r) => setTimeout(r, 0));
+        expect(exit).toHaveBeenCalledWith(1);
+      }
+    });
+
+    it('logs link has no severity clause (stderr text carries no severity)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      prodOnCloudRun(fetchMock);
+      await notifyFailure('all', new Error('boom'), { status: 500 });
+      const text = bodies(fetchMock)[0];
+      expect(text).toContain('View logs in GCP');
+      expect(text).not.toContain(encodeURIComponent('severity>=ERROR'));
+      expect(text).toContain(encodeURIComponent('resource.labels.service_name='));
     });
 
     it('uncaughtException alert runs before an existing exiting listener', () => {
